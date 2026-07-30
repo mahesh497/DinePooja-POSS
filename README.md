@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DinePooja POS
 
-## Getting Started
+Restaurant point-of-sale (PetPooja-style): billing, KOT, tables, delivery GPS, GST, reports — web, PWA, and Android.
 
-First, run the development server:
+## Documentation
+
+**Full docs:** [docs/README.md](./docs/README.md)
+
+| Guide | Link |
+|-------|------|
+| Overview | [docs/01-overview.md](./docs/01-overview.md) |
+| Setup | [docs/02-setup.md](./docs/02-setup.md) |
+| User guide | [docs/03-user-guide.md](./docs/03-user-guide.md) |
+| Modules | [docs/04-modules.md](./docs/04-modules.md) |
+| Roles | [docs/05-roles.md](./docs/05-roles.md) |
+| Architecture | [docs/06-architecture.md](./docs/06-architecture.md) |
+| Mobile / APK | [MOBILE.md](./MOBILE.md) |
+
+## Quick start
 
 ```bash
+npm install
+npm run db:push
+npm run db:seed
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Demo logins
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Password for all: `password123`
 
-## Learn More
+| Role    | Email                   |
+|---------|-------------------------|
+| Owner   | owner@dinepooja.local    |
+| Manager | manager@dinepooja.local  |
+| Cashier | cashier@dinepooja.local  |
+| Captain | captain@dinepooja.local  |
 
-To learn more about Next.js, take a look at the following resources:
+## Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js 16 (App Router) + TypeScript + Tailwind  
+- Prisma + SQLite (local); optional Postgres via `docker-compose.yml`  
+- NextAuth roles: Owner / Manager / Cashier / Captain  
+- Capacitor Android + PWA  
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Core flows
 
-## Deploy on Vercel
+1. **Tables** → open table → **POS** items → **Send KOT**  
+2. **KOT** → preparing / served / reprint  
+3. Pay Cash / UPI / Card → print bill  
+4. **Delivery** → assign partner → GPS → Delivered (COD)  
+5. **Reports** → day close  
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Install as an app
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Desktop:** Chrome/Edge → Install app (PWA)  
+- **Android:** see [MOBILE.md](./MOBILE.md) (build APK in Android Studio)

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DinePooja POS</string>
+    <string name="title_activity_main">DinePooja POS</string>
+    <string name="package_name">com.dinepooja.pos</string>
+    <string name="custom_url_scheme">com.dinepooja.pos</string>
+</resources>

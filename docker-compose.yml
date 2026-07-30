@@ -1,0 +1,15 @@
+﻿services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dineflow
+      POSTGRES_PASSWORD: dineflow
+      POSTGRES_DB: dineflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - dineflow_pg:/var/lib/postgresql/data
+
+volumes:
+  dineflow_pg:
