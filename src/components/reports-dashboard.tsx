@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { dayClose } from "@/lib/actions/orders";
 import { formatINR } from "@/lib/tax";
 
@@ -41,29 +41,55 @@ export function ReportsDashboard({
 }: ReportsProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-3xl">Reports</h1>
-          <p className="text-sm text-[var(--muted)]">Today&apos;s sales, items, payments, day close.</p>
+          <p className="text-sm text-[var(--muted)]">
+            Today&apos;s sales · local SQLite · day close clears finished orders
+          </p>
         </div>
         {canClose ? (
           <button
             type="button"
             disabled={pending}
             className="rounded-xl bg-[var(--accent)] px-4 py-3 font-semibold text-white"
-            onClick={() =>
+            onClick={() => {
+              const ok = window.confirm(
+                "Run day close?\n\nThis saves today’s sales summary, then deletes finished order / KOT / payment data from this PC.\n\nMenu, staff, customers, and day-close totals are kept.\nSettle or cancel any open bills first."
+              );
+              if (!ok) return;
               startTransition(async () => {
-                await dayClose();
-                router.refresh();
-              })
-            }
+                try {
+                  setError("");
+                  setMessage("");
+                  const result = await dayClose();
+                  setMessage(
+                    `Day closed. Cleared ${result.clearedOrders} finished order(s). Sales ${formatINR(result.totalSales)}.`
+                  );
+                  router.refresh();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Day close failed");
+                }
+              });
+            }}
           >
-            Run day close
+            {pending ? "Closing…" : "Run day close"}
           </button>
         ) : null}
+      </div>
+
+      {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+      {message ? <p className="text-sm text-[var(--ok)]">{message}</p> : null}
+
+      <div className="rounded-2xl border border-dashed border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-sm text-[var(--muted)]">
+        Order data stays on this machine only (<code className="text-xs">prisma/dev.db</code>).
+        Day close archives totals in Day Close history, then wipes today’s finished tickets so the
+        next shift starts clean.
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -52,7 +52,10 @@ export function BillTools({
   return (
     <div className="no-print space-y-3">
       <div className="flex flex-wrap gap-2">
-        <Link href={`/pos/${orderId}`} className="rounded-xl border border-[var(--line)] px-4 py-2 text-sm">
+        <Link
+          href={status === "OPEN" || status === "HOLD" ? `/pos/${orderId}` : "/pos"}
+          className="rounded-xl border border-[var(--line)] px-4 py-2 text-sm"
+        >
           Back to POS
         </Link>
         <button

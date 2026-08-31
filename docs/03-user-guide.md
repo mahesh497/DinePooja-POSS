@@ -75,7 +75,13 @@ Online orders are tagged from POS (platform name); there is no live Swiggy/Zomat
 ## H. Reports & day close
 
 - Sales / item / executive views.  
-- **Day close** (Owner/Manager): close the business day when ready.
+- Order data is **local only** (`prisma/dev.db` on this PC).  
+- **Day close** (Owner/Manager):
+  1. Settle/cancel all open bills first  
+  2. Saves today’s totals into Day Close history  
+  3. Deletes finished orders / KOTs / payments from local DB  
+  4. Keeps menu, staff, customers, settings, and day-close summaries  
+  5. Frees tables and resets delivery partners
 
 ---
 
