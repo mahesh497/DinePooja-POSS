@@ -40,6 +40,8 @@ yarn-error.log*
 # local sqlite
 prisma/*.db
 prisma/*.db-journal
+# dev.db ships with the repo so a fresh clone has seeded demo data
+!prisma/dev.db
 
 # vercel
 .vercel

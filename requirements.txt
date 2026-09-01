@@ -1,0 +1,38 @@
+# DinePooja POS — system requirements
+# (Node app: install packages with `npm install`, not pip)
+
+# Runtime
+Node.js >= 20.0.0
+npm >= 10.0.0
+
+# OS
+Windows 10/11 (tested)
+macOS / Linux also supported
+
+# Disk
+~500 MB free (node_modules + SQLite + build)
+
+# Network
+Git access to https://github.com/mahesh497/DinePooja-POSS.git
+Local port 3000 available
+
+# Database
+SQLite (bundled via Prisma — no separate DB server)
+
+# Optional — Android APK
+Android Studio (latest)
+Android SDK + JDK 17+
+Phone/emulator on same Wi-Fi as POS PC
+
+# Optional — install as desktop app
+Chrome or Edge (PWA install)
+
+# Quick install (new PC)
+# git clone https://github.com/mahesh497/DinePooja-POSS.git
+# cd DinePooja-POSS
+# npm install
+# npm run db:push
+# npm run db:seed
+# npm run dev
+# Open http://localhost:3000
+# Login: owner@dinepooja.local / password123
