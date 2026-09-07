@@ -120,6 +120,7 @@ model Outlet {
   deliveryChargeDefault  Float @default(40)
   serviceChargePercent   Float @default(0)
   containerChargeDefault Float @default(0)
+  reportEmail            String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   users         User[]
@@ -136,6 +137,15 @@ model Outlet {
   coupons       Coupon[]
   deliveryBoys  DeliveryBoy[]
   feedbacks     Feedback[]
+}
+
+model AppLicense {
+  id             String    @id @default("default")
+  installedAt    DateTime  @default(now())
+  expiresAt      DateTime
+  lastUnlockedAt DateTime?
+  challenge      String?
+  updatedAt      DateTime  @updatedAt
 }
 
 model DiningHall {
@@ -308,7 +318,7 @@ model OrderItem {
   voidReason   String?
   kotSent      Boolean       @default(false)
   menuItemId   String?
-  menuItem     MenuItem?     @relation(fields: [menuItemId], references: [id])
+  menuItem     MenuItem?     @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
   orderId      String
   order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   kotItems     KotItem[]

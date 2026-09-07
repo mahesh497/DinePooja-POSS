@@ -67,25 +67,39 @@ Online orders are tagged from POS (platform name); there is no live Swiggy/Zomat
 ## G. Menu & inventory
 
 - **Menu**: categories, items, codes, variants, add-ons, availability.  
+- **Excel / CSV upload** on Menu page (template: `/menu-template.csv` — category, code, name, price, isVeg, kitchenStation)  
+- **Clear all menu** to wipe categories/items before a fresh import  
 - **Menu Item On/Off**: quick 86’ing.  
 - **Inventory**: live stock numbers; stock decreases when an order is settled.
 
 ---
 
-## H. Reports & day close
+## H. Reports, email & day close
 
 - Sales / item / executive views.  
 - Order data is **local only** (`prisma/dev.db` on this PC).  
-- **Day close** (Owner/Manager):
+- Set **Settings → Daily report email** (+ SMTP in `.env`).  
+- **Reports → Run day close** (Owner/Manager):
   1. Settle/cancel all open bills first  
   2. Saves today’s totals into Day Close history  
-  3. Deletes finished orders / KOTs / payments from local DB  
-  4. Keeps menu, staff, customers, settings, and day-close summaries  
-  5. Frees tables and resets delivery partners
+  3. Emails the daily report (if configured)  
+  4. Deletes finished orders / KOTs / payments from local DB  
+  5. Keeps menu, staff, customers, settings, and day-close summaries  
+  6. Frees tables and resets delivery partners
 
 ---
 
-## I. Displays & alerts
+## I. License (6 months)
+
+- First install is valid for **6 months**  
+- After expiry, POS opens **/activate**  
+- Enter the vendor **6-digit unlock code** (set in `.env` as `LICENSE_UNLOCK_CODE`, default `934666`)  
+- Code is checked only on the server — not shown in the UI  
+- Correct code extends another 6 months
+
+---
+
+## J. Displays & alerts
 
 - **LED** / **Dual Screen**: guest-facing boards (auto-refresh).  
 - **Alerts**: low stock, unpaid, operational warnings.
@@ -97,3 +111,4 @@ Online orders are tagged from POS (platform name); there is no live Swiggy/Zomat
 - Use the Operations dashboard module grid for shortcuts.  
 - Collapsed sidebar on POS keeps the billing screen wide.  
 - Install as **PWA** on desktop tablets for fullscreen; use **Android APK** for phones (see [MOBILE.md](../MOBILE.md)).
+- Bill receipts no longer print barcodes / scanner QR codes.

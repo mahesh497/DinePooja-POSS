@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createTable, updateOutletSettings } from "@/lib/actions/admin";
+import { createTable, updateOutletSettings, updateReportEmail } from "@/lib/actions/admin";
 
 type Outlet = {
   name: string;
@@ -14,6 +14,7 @@ type Outlet = {
   sgstPercent: number;
   packingChargeDefault: number;
   deliveryChargeDefault: number;
+  reportEmail: string | null;
 };
 
 export function SettingsForm({
@@ -39,6 +40,8 @@ export function SettingsForm({
   const [tableName, setTableName] = useState("");
   const [capacity, setCapacity] = useState(4);
   const [saved, setSaved] = useState(false);
+  const [reportEmail, setReportEmail] = useState(outlet.reportEmail ?? "");
+  const [emailSaved, setEmailSaved] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -156,6 +159,36 @@ export function SettingsForm({
           Save settings
         </button>
         {saved ? <p className="text-sm text-[var(--ok)] md:col-span-2">Saved.</p> : null}
+      </form>
+
+      <form
+        className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-4 space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          startTransition(async () => {
+            await updateReportEmail(reportEmail);
+            setEmailSaved(true);
+            router.refresh();
+          });
+        }}
+      >
+        <h2 className="font-[family-name:var(--font-display)] text-xl">Daily report email</h2>
+        <p className="text-sm text-[var(--muted)]">
+          On day close, sales summary is emailed here, then finished orders are cleared locally.
+          Configure SMTP in <code>.env</code> (<code>SMTP_HOST</code>, <code>SMTP_USER</code>,{" "}
+          <code>SMTP_PASS</code>).
+        </p>
+        <input
+          type="email"
+          value={reportEmail}
+          onChange={(e) => setReportEmail(e.target.value)}
+          placeholder="owner@restaurant.com"
+          className="w-full rounded-xl border border-[var(--line)] px-3 py-2"
+        />
+        <button type="submit" disabled={pending} className="rounded-xl bg-[var(--accent)] px-4 py-2 text-white">
+          Save report email
+        </button>
+        {emailSaved ? <p className="text-sm text-[var(--ok)]">Report email saved.</p> : null}
       </form>
 
       <section className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-4">

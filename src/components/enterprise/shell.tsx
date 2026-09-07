@@ -45,6 +45,7 @@ type ShellProps = {
   outletId: string;
   userName: string;
   role: string;
+  licenseDaysLeft?: number;
   children: React.ReactNode;
 };
 
@@ -71,6 +72,7 @@ export function EnterpriseShell({
   outletId,
   userName,
   role,
+  licenseDaysLeft,
   children,
 }: ShellProps) {
   const pathname = usePathname();
@@ -254,8 +256,20 @@ export function EnterpriseShell({
               {online ? "Online" : "Offline"}
             </div>
             {!isPosScreen ? (
-              <div className="hidden text-[10px] text-[var(--muted)] xl:block">
+              <div className="hidden items-center gap-2 text-[10px] text-[var(--muted)] xl:flex">
                 <LiveClock />
+                {typeof licenseDaysLeft === "number" ? (
+                  <span
+                    className={
+                      licenseDaysLeft <= 14
+                        ? "rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800"
+                        : "rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700"
+                    }
+                    title="License days remaining"
+                  >
+                    Lic {licenseDaysLeft}d
+                  </span>
+                ) : null}
               </div>
             ) : null}
             <div className="hidden text-right text-[10px] leading-tight lg:block">

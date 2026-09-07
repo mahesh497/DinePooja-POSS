@@ -1,0 +1,6 @@
+category,code,name,price,isVeg,kitchenStation
+Starters,101,Gobi Manchurian,180,yes,Kitchen
+Starters,102,Chicken 65,240,no,Kitchen
+Main Course,201,Veg Biryani,220,yes,Kitchen
+Main Course,202,Chicken Biryani,280,no,Kitchen
+Beverages,301,Fresh Lime Soda,80,yes,Bar

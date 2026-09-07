@@ -91,6 +91,139 @@ export async function addAddon(menuItemId: string, name: string, price: number) 
   revalidatePath("/menu");
 }
 
+/** Wipe all categories + menu items for this outlet (order lines keep names; FK nulled). */
+export async function clearAllMenu() {
+  const session = await requirePermission("menu");
+  const outletId = session.user.outletId;
+
+  const categories = await prisma.category.findMany({
+    where: { outletId },
+    select: { id: true },
+  });
+  const categoryIds = categories.map((c) => c.id);
+  if (!categoryIds.length) return { deletedItems: 0, deletedCategories: 0 };
+
+  const items = await prisma.menuItem.findMany({
+    where: { categoryId: { in: categoryIds } },
+    select: { id: true },
+  });
+  const itemIds = items.map((i) => i.id);
+
+  if (itemIds.length) {
+    await prisma.orderItem.updateMany({
+      where: { menuItemId: { in: itemIds } },
+      data: { menuItemId: null },
+    });
+    await prisma.menuAddon.deleteMany({ where: { menuItemId: { in: itemIds } } });
+    await prisma.menuVariant.deleteMany({ where: { menuItemId: { in: itemIds } } });
+    await prisma.menuItem.deleteMany({ where: { id: { in: itemIds } } });
+  }
+  await prisma.category.deleteMany({ where: { outletId } });
+
+  revalidatePath("/menu");
+  revalidatePath("/pos");
+  revalidatePath("/inventory");
+  revalidatePath("/menu-availability");
+  return { deletedItems: itemIds.length, deletedCategories: categoryIds.length };
+}
+
+export type MenuImportRow = {
+  category: string;
+  code: string;
+  name: string;
+  price: number;
+  isVeg?: boolean | string;
+  kitchenStation?: string;
+};
+
+/** Bulk upsert menu from Excel/CSV parsed rows. */
+export async function importMenuRows(rows: MenuImportRow[]) {
+  const session = await requirePermission("menu");
+  const outletId = session.user.outletId;
+  if (!rows.length) throw new Error("No rows to import");
+
+  let created = 0;
+  let updated = 0;
+  const categoryCache = new Map<string, string>();
+
+  const existingCats = await prisma.category.findMany({ where: { outletId } });
+  for (const c of existingCats) categoryCache.set(c.name.trim().toLowerCase(), c.id);
+
+  for (const raw of rows) {
+    const categoryName = String(raw.category || "").trim();
+    const code = String(raw.code || "").trim();
+    const name = String(raw.name || "").trim();
+    const price = Number(raw.price);
+    if (!categoryName || !code || !name || !Number.isFinite(price)) continue;
+
+    let categoryId = categoryCache.get(categoryName.toLowerCase());
+    if (!categoryId) {
+      const cat = await prisma.category.create({
+        data: {
+          name: categoryName,
+          outletId,
+          sortOrder: categoryCache.size + 1,
+        },
+      });
+      categoryId = cat.id;
+      categoryCache.set(categoryName.toLowerCase(), categoryId);
+    }
+
+    const existing = await prisma.menuItem.findUnique({ where: { code } });
+    const isVeg =
+      raw.isVeg === undefined
+        ? true
+        : typeof raw.isVeg === "boolean"
+          ? raw.isVeg
+          : !["n", "no", "0", "nonveg", "non-veg", "false"].includes(
+              String(raw.isVeg).trim().toLowerCase()
+            );
+
+    if (existing) {
+      await prisma.menuItem.update({
+        where: { id: existing.id },
+        data: {
+          name,
+          price,
+          isVeg,
+          categoryId,
+          kitchenStation: raw.kitchenStation?.trim() || existing.kitchenStation,
+          available: true,
+        },
+      });
+      updated++;
+    } else {
+      await prisma.menuItem.create({
+        data: {
+          code,
+          name,
+          price,
+          isVeg,
+          categoryId,
+          kitchenStation: raw.kitchenStation?.trim() || "Kitchen",
+        },
+      });
+      created++;
+    }
+  }
+
+  revalidatePath("/menu");
+  revalidatePath("/pos");
+  revalidatePath("/inventory");
+  return { created, updated };
+}
+
+export async function updateReportEmail(email: string) {
+  const session = await requirePermission("settings");
+  const outletId = await resolveOutletId(session);
+  await prisma.outlet.update({
+    where: { id: outletId },
+    data: { reportEmail: email.trim() || null },
+  });
+  revalidatePath("/settings");
+  revalidatePath("/reports");
+}
+
 export async function updateOutletSettings(input: {
   name: string;
   address?: string;

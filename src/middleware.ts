@@ -34,7 +34,8 @@ export default withAuth(
   {
     callbacks: {
       authorized: ({ token, req }) => {
-        if (req.nextUrl.pathname.startsWith("/login")) return true;
+        const path = req.nextUrl.pathname;
+        if (path.startsWith("/login") || path.startsWith("/activate")) return true;
         return !!token;
       },
     },
@@ -76,5 +77,6 @@ export const config = {
     "/coupons/:path*",
     "/hold-orders/:path*",
     "/store/:path*",
+    "/activate",
   ],
 };

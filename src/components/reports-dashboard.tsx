@@ -69,7 +69,9 @@ export function ReportsDashboard({
                   setMessage("");
                   const result = await dayClose();
                   setMessage(
-                    `Day closed. Cleared ${result.clearedOrders} finished order(s). Sales ${formatINR(result.totalSales)}.`
+                    `Day closed. Cleared ${result.clearedOrders} finished order(s). Sales ${formatINR(result.totalSales)}.${
+                      result.emailSent ? " Daily report emailed." : " (Email skipped — set report email / SMTP.)"
+                    }`
                   );
                   router.refresh();
                 } catch (e) {

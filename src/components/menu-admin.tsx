@@ -5,13 +5,16 @@ import { useState, useTransition } from "react";
 import {
   addAddon,
   addVariant,
+  clearAllMenu,
   createCategory,
   createMenuItem,
+  importMenuRows,
   toggleMenuItem,
   updateMenuItemCode,
   updateMenuItemPrice,
 } from "@/lib/actions/admin";
 import { formatINR } from "@/lib/tax";
+import * as XLSX from "xlsx";
 
 type Item = {
   id: string;
@@ -45,16 +48,111 @@ export function MenuAdmin({ categories }: { categories: Category[] }) {
     kitchenStation: "Kitchen",
   });
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  function parseSheet(file: File) {
+    startTransition(async () => {
+      try {
+        setError("");
+        setMessage("");
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        const rows = json.map((r) => {
+          const keys = Object.fromEntries(
+            Object.entries(r).map(([k, v]) => [k.trim().toLowerCase().replace(/\s+/g, ""), v])
+          );
+          return {
+            category: String(keys.category || keys.cat || ""),
+            code: String(keys.code || keys.itemcode || ""),
+            name: String(keys.name || keys.item || keys.itemname || ""),
+            price: Number(keys.price || keys.rate || 0),
+            isVeg: keys.isveg !== undefined && keys.isveg !== "" ? keys.isveg : keys.veg,
+            kitchenStation: String(keys.kitchenstation || keys.station || "Kitchen"),
+          } as {
+            category: string;
+            code: string;
+            name: string;
+            price: number;
+            isVeg?: boolean | string;
+            kitchenStation: string;
+          };
+        });
+        const result = await importMenuRows(rows);
+        setMessage(`Import done: ${result.created} created, ${result.updated} updated`);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Import failed");
+      }
+    });
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl">Menu</h1>
-        <p className="text-sm text-[var(--muted)]">
-          Categories, item codes, prices, variants, add-ons, and availability.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-3xl">Menu</h1>
+          <p className="text-sm text-[var(--muted)]">
+            Categories, item codes, Excel upload, clear all, variants & add-ons.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="/menu-template.csv"
+            download
+            className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold"
+          >
+            Download Excel/CSV template
+          </a>
+          <label className="cursor-pointer rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+            Upload Excel / CSV
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) parseSheet(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={pending}
+            className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+            onClick={() => {
+              const ok = window.confirm(
+                "Clear ALL menu categories and items for this outlet?\nThis cannot be undone (order history names stay)."
+              );
+              if (!ok) return;
+              startTransition(async () => {
+                try {
+                  setError("");
+                  const r = await clearAllMenu();
+                  setMessage(
+                    `Cleared ${r.deletedItems} items and ${r.deletedCategories} categories`
+                  );
+                  router.refresh();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Clear failed");
+                }
+              });
+            }}
+          >
+            Clear all menu
+          </button>
+        </div>
       </div>
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+      {message ? <p className="text-sm text-[var(--ok)]">{message}</p> : null}
+
+      <div className="rounded-2xl border border-dashed border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-xs text-[var(--muted)]">
+        Excel columns: <code>category</code>, <code>code</code>, <code>name</code>, <code>price</code>,
+        optional <code>isVeg</code>, <code>kitchenStation</code>. Existing codes are
+        updated; new codes are created.
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <form

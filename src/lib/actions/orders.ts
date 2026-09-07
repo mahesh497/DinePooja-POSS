@@ -834,6 +834,30 @@ export async function dayClose(notes?: string) {
     },
   });
 
+  const outlet = await prisma.outlet.findUnique({
+    where: { id: outletId },
+    select: { name: true, reportEmail: true },
+  });
+
+  let emailSent = false;
+  try {
+    const { sendDailyReportEmail } = await import("@/lib/email");
+    emailSent = await sendDailyReportEmail({
+      outletName: outlet?.name || "Outlet",
+      businessDate: start.toLocaleDateString("en-IN"),
+      totalSales,
+      orderCount: settled.length,
+      voidCount: voids,
+      discountTotal,
+      cashTotal,
+      upiTotal,
+      cardTotal,
+      toEmail: outlet?.reportEmail || process.env.REPORT_EMAIL || "",
+    });
+  } catch (e) {
+    console.error("[dayClose] email failed", e);
+  }
+
   const orderIds = uniqueOrders.map((o) => o.id);
 
   // Clear finished order data locally (items / KOT / payments cascade)
@@ -880,7 +904,12 @@ export async function dayClose(notes?: string) {
   revalidatePath("/bill");
   revalidatePath("/alerts");
   revalidatePath("/cash");
-  return { id: close.id, clearedOrders: orderIds.length, totalSales };
+  return {
+    id: close.id,
+    clearedOrders: orderIds.length,
+    totalSales,
+    emailSent,
+  };
 }
 
 export async function setOrderType(orderId: string, type: OrderType) {

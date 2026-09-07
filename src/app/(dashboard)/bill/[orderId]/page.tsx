@@ -39,9 +39,6 @@ export default async function BillPage({ params }: { params: Promise<{ orderId: 
     order.deliveryCharge +
     order.serviceCharge +
     order.containerCharge;
-  const upiPayload = `upi://pay?pa=spicegarden@upi&pn=${encodeURIComponent(order.outlet.name)}&am=${order.total.toFixed(2)}&cu=INR&tn=${encodeURIComponent(billNo)}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(upiPayload)}`;
-  const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(billNo)}&scale=2&height=10&includetext`;
 
   return (
     <div className="space-y-4">
@@ -143,16 +140,6 @@ export default async function BillPage({ params }: { params: Promise<{ orderId: 
             ))}
           </>
         ) : null}
-
-        <div className="mt-4 flex items-end justify-between gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qrUrl} alt="UPI QR" width={140} height={140} className="rounded-lg border" />
-          <div className="flex-1 text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={barcodeUrl} alt={`Barcode ${billNo}`} className="mx-auto max-w-full" />
-            <p className="mt-1 text-[10px]">{billNo}</p>
-          </div>
-        </div>
 
         <div className="mt-6 border-t border-dashed pt-4">
           <p className="text-xs text-gray-500">Customer signature</p>
