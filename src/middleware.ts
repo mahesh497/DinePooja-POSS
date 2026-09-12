@@ -24,6 +24,13 @@ export default withAuth(
   function middleware(req) {
     const role = req.nextauth.token?.role as Role | undefined;
     const path = req.nextUrl.pathname;
+    const posOrder = /^\/pos\/([^/]+)$/.exec(path);
+    if (posOrder) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/pos";
+      url.searchParams.set("order", posOrder[1]);
+      return NextResponse.rewrite(url);
+    }
     for (const [prefix, roles] of Object.entries(routePerms)) {
       if (path.startsWith(prefix) && role && !roles.includes(role)) {
         return NextResponse.redirect(new URL("/dashboard", req.url));

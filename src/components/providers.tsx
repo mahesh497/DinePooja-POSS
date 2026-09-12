@@ -6,7 +6,7 @@ import { PwaRegister } from "@/components/pwa-register";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
+    <SessionProvider basePath="/api/nextauth">
       {children}
       <NativeShell />
       <PwaRegister />
