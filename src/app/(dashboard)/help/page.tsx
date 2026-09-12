@@ -43,6 +43,10 @@ export default async function HelpPage() {
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[var(--muted)]">
           <li>Use Tables to start dine-in, then punch items on POS.</li>
           <li>Send KOT before printing the bill for kitchen sync.</li>
+          <li>
+            Keep the KOT page open on the kitchen POS with auto-print on — waiter Send KOT prints
+            there automatically (allow popups for this site).
+          </li>
           <li>Hold Orders parks a bill; resume from Hold Orders or POS.</li>
           <li>Demo coupons: WELCOME10 (10%), FLAT50 (₹50).</li>
         </ul>

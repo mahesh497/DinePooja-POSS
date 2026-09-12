@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { assignDriver, cancelOrder, refundOrder } from "@/lib/actions/table-ops";
+import { deleteOrderPermanently } from "@/lib/actions/orders";
 import { formatINR } from "@/lib/tax";
 import {
   ONLINE_PLATFORMS,
@@ -60,10 +61,12 @@ export function OrdersHub({
   orders,
   initialTab = "CURRENT",
   billQuery,
+  canDelete = false,
 }: {
   orders: OrderRow[];
   initialTab?: (typeof TABS)[number]["key"];
   billQuery?: string;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -305,6 +308,25 @@ export function OrdersHub({
                     }}
                   >
                     Refund
+                  </button>
+                ) : null}
+                {canDelete ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="rounded-md bg-red-600 px-2 py-1 text-[10px] font-semibold text-white"
+                    onClick={() => {
+                      const ok = window.confirm(
+                        `Delete bill ${order.orderNumber} permanently?\n\nThis cannot be undone.`
+                      );
+                      if (!ok) return;
+                      run(async () => {
+                        await deleteOrderPermanently(order.id);
+                        setMessage(`${order.orderNumber} deleted`);
+                      });
+                    }}
+                  >
+                    Delete
                   </button>
                 ) : null}
                 {order.customerAddress || order.type === "DELIVERY" ? (

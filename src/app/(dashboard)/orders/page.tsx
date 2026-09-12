@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { OrdersHub } from "@/components/orders-hub";
 
 export default async function OrdersHubPage({
@@ -79,6 +80,7 @@ export default async function OrdersHubPage({
     <OrdersHub
       initialTab={initialTab}
       billQuery={bill?.trim() || undefined}
+      canDelete={can(session.user.role, "void")}
       orders={orders.map((o) => ({
         id: o.id,
         orderNumber: o.orderNumber,

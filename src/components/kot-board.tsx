@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateKotItemStatus } from "@/lib/actions/orders";
 import {
@@ -12,6 +12,10 @@ import {
   setKotDelayed,
   splitKotItems,
 } from "@/lib/actions/table-ops";
+import { printKotTicket } from "@/lib/kot-print";
+
+const AUTO_PRINT_KEY = "dinepooja-kot-auto-printed";
+const AUTO_PRINT_PREF = "dinepooja-kot-auto-print-on";
 
 type KotItem = {
   id: string;
@@ -53,6 +57,19 @@ function statusBadge(status: string) {
   return "bg-[var(--chip)] text-[var(--ink)]";
 }
 
+function readPrintedIds(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(AUTO_PRINT_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writePrintedIds(ids: Set<string>) {
+  sessionStorage.setItem(AUTO_PRINT_KEY, JSON.stringify([...ids]));
+}
+
 export function KotBoard({
   kots,
   initialQuery = "",
@@ -72,6 +89,50 @@ export function KotBoard({
   const [splitItems, setSplitItems] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [autoPrint, setAutoPrint] = useState(true);
+  const seededRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const pref = localStorage.getItem(AUTO_PRINT_PREF);
+      if (pref === "0") setAutoPrint(false);
+      if (pref === "1") setAutoPrint(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Keep kitchen board live so waiter "Send KOT" shows up quickly
+  useEffect(() => {
+    const id = window.setInterval(() => router.refresh(), 2500);
+    return () => window.clearInterval(id);
+  }, [router]);
+
+  // Auto-print new tickets on this kitchen POS (skip ones already on screen at open)
+  useEffect(() => {
+    if (!seededRef.current) {
+      seededRef.current = true;
+      const printed = readPrintedIds();
+      for (const k of kots) printed.add(k.id);
+      writePrintedIds(printed);
+      return;
+    }
+    if (!autoPrint) return;
+
+    const printed = readPrintedIds();
+    const fresh = kots.filter(
+      (k) =>
+        (k.status === "PENDING" || k.status === "PREPARING") && !printed.has(k.id)
+    );
+    if (!fresh.length) return;
+
+    for (const kot of fresh) {
+      printKotTicket(kot, false);
+      printed.add(kot.id);
+    }
+    writePrintedIds(printed);
+    setMessage(`Auto-printed ${fresh.length} KOT ticket(s)`);
+  }, [kots, autoPrint]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -118,31 +179,36 @@ export function KotBoard({
   }
 
   function printKot(kot: KotCard, reprint = false) {
-    const w = window.open("", "_blank", "width=400,height=600");
-    if (!w) return;
-    w.document.write(`
-      <html><head><title>KOT ${kot.kotNumber}</title>
-      <style>body{font-family:monospace;padding:12px} h1{font-size:18px} li{margin:6px 0}</style>
-      </head><body>
-      <h1>${reprint ? "REPRINT · " : ""}KOT #${kot.kotNumber} · ${kot.station}</h1>
-      <p>${kot.tableName ? "Table " + kot.tableName : kot.orderTypeLabel} · ${kot.orderNumber}</p>
-      <p>${new Date(kot.createdAt).toLocaleString()}</p>
-      <hr/>
-      <ul>${kot.items
-        .filter((i) => i.status !== "CANCELLED" && i.status !== "VOIDED")
-        .map(
-          (i) =>
-            `<li><strong>${i.quantity}x</strong> ${i.name}${i.notes ? " (" + i.notes + ")" : ""}</li>`
-        )
-        .join("")}</ul>
-      <script>window.print()</script>
-      </body></html>
-    `);
-    w.document.close();
+    printKotTicket(kot, reprint);
+    const printed = readPrintedIds();
+    printed.add(kot.id);
+    writePrintedIds(printed);
   }
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-sm">
+        <label className="flex cursor-pointer items-center gap-2 font-medium">
+          <input
+            type="checkbox"
+            checked={autoPrint}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setAutoPrint(on);
+              try {
+                localStorage.setItem(AUTO_PRINT_PREF, on ? "1" : "0");
+              } catch {
+                /* ignore */
+              }
+            }}
+          />
+          Auto-print new KOTs on this kitchen screen
+        </label>
+        <span className="text-xs text-[var(--muted)]">
+          Keep this page open on the kitchen POS. When a waiter taps Send KOT, tickets print here.
+        </span>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {QUEUE_FILTERS.map((f) => (
           <button

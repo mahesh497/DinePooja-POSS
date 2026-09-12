@@ -930,7 +930,7 @@ export function PosScreen({
                   try {
                     setError("");
                     await sendKot(order.id);
-                    setMessage("KOT sent to kitchen");
+                    setMessage("KOT sent — kitchen POS will auto-print");
                     router.refresh();
                   } catch (e) {
                     setError(e instanceof Error ? e.message : "KOT failed");

@@ -722,6 +722,53 @@ export async function voidOrder(orderId: string, reason: string) {
   revalidatePath("/reports");
 }
 
+/** Permanently delete any sales order (all statuses). */
+export async function deleteOrderPermanently(orderId: string) {
+  const session = await requirePermission("void");
+  const outletId = session.user.outletId;
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, outletId },
+  });
+  if (!order) throw new Error("Order not found");
+
+  const tableId = order.tableId;
+  const orderNumber = order.orderNumber;
+
+  await prisma.order.delete({ where: { id: order.id } });
+  await prisma.auditLog.deleteMany({
+    where: { outletId, entity: "Order", entityId: orderId },
+  });
+
+  if (tableId) {
+    const stillOpen = await prisma.order.findFirst({
+      where: { tableId, status: { in: ["OPEN", "HOLD"] } },
+      select: { id: true },
+    });
+    if (!stillOpen) await releaseTable(tableId);
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      action: "ORDER_DELETE",
+      entity: "Order",
+      entityId: orderId,
+      details: `Deleted ${orderNumber}`,
+      outletId,
+      userId: session.user.id,
+    },
+  });
+
+  revalidatePath("/orders");
+  revalidatePath("/pos");
+  revalidatePath("/tables");
+  revalidatePath("/reports");
+  revalidatePath("/bill");
+  revalidatePath("/kot");
+  revalidatePath("/delivery");
+  revalidatePath("/cash");
+  revalidatePath("/alerts");
+}
+
 export async function mergeTables(sourceTableId: string, targetTableId: string) {
   await requirePermission("tables");
   if (sourceTableId === targetTableId) throw new Error("Same table");
@@ -762,24 +809,16 @@ export async function mergeTables(sourceTableId: string, targetTableId: string) 
   return targetOrder.id;
 }
 
-export async function dayClose(notes?: string) {
-  const session = await requirePermission("day_close");
-  const outletId = session.user.outletId;
-  const start = new Date();
+function dayBounds(d = new Date()) {
+  const start = new Date(d);
   start.setHours(0, 0, 0, 0);
-  const end = new Date();
+  const end = new Date(d);
   end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
 
-  // Don't wipe while bills are still open on the floor
-  const openCount = await prisma.order.count({
-    where: { outletId, status: { in: ["OPEN", "HOLD"] } },
-  });
-  if (openCount > 0) {
-    throw new Error(
-      `Cannot day-close: ${openCount} open/hold order(s) still active. Settle, void, or cancel them first.`
-    );
-  }
-
+async function loadDayCloseCandidateOrders(outletId: string) {
+  const { start, end } = dayBounds();
   const orders = await prisma.order.findMany({
     where: {
       outletId,
@@ -791,22 +830,23 @@ export async function dayClose(notes?: string) {
         },
       ],
     },
-    include: { payments: true },
+    include: { payments: true, table: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
   });
-
-  // Prefer unique set (settled may match both OR branches)
   const byId = new Map(orders.map((o) => [o.id, o]));
-  const uniqueOrders = [...byId.values()];
+  return { start, orders: [...byId.values()] };
+}
 
-  const voids = uniqueOrders.filter((o) => o.status === "VOIDED").length;
-  const settled = uniqueOrders.filter((o) => o.status === "SETTLED");
-
+function summarizeDayCloseOrders(
+  orders: Awaited<ReturnType<typeof loadDayCloseCandidateOrders>>["orders"]
+) {
+  const voids = orders.filter((o) => o.status === "VOIDED").length;
+  const settled = orders.filter((o) => o.status === "SETTLED");
   let cashTotal = 0;
   let upiTotal = 0;
   let cardTotal = 0;
   let discountTotal = 0;
   let totalSales = 0;
-
   for (const o of settled) {
     totalSales += o.total;
     discountTotal += o.discountAmount;
@@ -816,6 +856,182 @@ export async function dayClose(notes?: string) {
       if (p.method === "CARD") cardTotal += p.amount;
     }
   }
+  return {
+    totalSales,
+    cashTotal,
+    upiTotal,
+    cardTotal,
+    discountTotal,
+    orderCount: settled.length,
+    voidCount: voids,
+  };
+}
+
+export type DayClosePreviewOrder = {
+  id: string;
+  orderNumber: string;
+  status: string;
+  type: string;
+  total: number;
+  cash: number;
+  upi: number;
+  card: number;
+  discountAmount: number;
+  tableName: string | null;
+  createdAt: string;
+};
+
+export async function getDayClosePreview() {
+  const session = await requirePermission("day_close");
+  const outletId = session.user.outletId;
+
+  const openCount = await prisma.order.count({
+    where: { outletId, status: { in: ["OPEN", "HOLD"] } },
+  });
+
+  const outlet = await prisma.outlet.findUnique({
+    where: { id: outletId },
+    select: { name: true, reportEmail: true },
+  });
+
+  const { start, orders } = await loadDayCloseCandidateOrders(outletId);
+  const totals = summarizeDayCloseOrders(orders);
+
+  const previewOrders: DayClosePreviewOrder[] = orders.map((o) => {
+    let cash = 0;
+    let upi = 0;
+    let card = 0;
+    for (const p of o.payments) {
+      if (p.method === "CASH") cash += p.amount;
+      if (p.method === "UPI") upi += p.amount;
+      if (p.method === "CARD") card += p.amount;
+    }
+    return {
+      id: o.id,
+      orderNumber: o.orderNumber,
+      status: o.status,
+      type: o.type,
+      total: o.total,
+      cash,
+      upi,
+      card,
+      discountAmount: o.discountAmount,
+      tableName: o.table?.name ?? null,
+      createdAt: o.createdAt.toISOString(),
+    };
+  });
+
+  return {
+    openCount,
+    businessDate: start.toLocaleDateString("en-IN"),
+    outletName: outlet?.name || "Outlet",
+    reportEmail: outlet?.reportEmail || process.env.REPORT_EMAIL || "",
+    totals,
+    orders: previewOrders,
+  };
+}
+
+export type DayCloseInput = {
+  includeOrderIds: string[];
+  totalSales: number;
+  cashTotal: number;
+  upiTotal: number;
+  cardTotal: number;
+  orderCount: number;
+  voidCount: number;
+  discountTotal: number;
+  dineInSales?: number;
+  parcelSales?: number;
+  deliverySales?: number;
+  notes?: string;
+  toEmail?: string;
+};
+
+export async function dayClose(input: DayCloseInput) {
+  const session = await requirePermission("day_close");
+  const outletId = session.user.outletId;
+  const { start } = dayBounds();
+
+  const openCount = await prisma.order.count({
+    where: { outletId, status: { in: ["OPEN", "HOLD"] } },
+  });
+  if (openCount > 0) {
+    throw new Error(
+      `Cannot day-close: ${openCount} open/hold order(s) still active. Settle, void, or cancel them first.`
+    );
+  }
+
+  const { orders: candidates } = await loadDayCloseCandidateOrders(outletId);
+  const candidateIds = new Set(candidates.map((o) => o.id));
+  // Empty includeOrderIds = clear all finished candidates for today
+  const includeOrderIds =
+    input.includeOrderIds.length === 0
+      ? [...candidateIds]
+      : [...new Set(input.includeOrderIds)].filter((id) => candidateIds.has(id));
+
+  const included = candidates.filter((o) => includeOrderIds.includes(o.id));
+  const computed = summarizeDayCloseOrders(included);
+
+  // Prefer modal edits when sent; otherwise use DB totals (same math as Reports)
+  const hasEdits =
+    input.totalSales != null ||
+    input.cashTotal != null ||
+    input.upiTotal != null ||
+    input.cardTotal != null;
+
+  const totalSales = roundMoney(
+    hasEdits && Number.isFinite(Number(input.totalSales))
+      ? Number(input.totalSales)
+      : computed.totalSales
+  );
+  const cashTotal = roundMoney(
+    hasEdits && Number.isFinite(Number(input.cashTotal)) ? Number(input.cashTotal) : computed.cashTotal
+  );
+  const upiTotal = roundMoney(
+    hasEdits && Number.isFinite(Number(input.upiTotal)) ? Number(input.upiTotal) : computed.upiTotal
+  );
+  const cardTotal = roundMoney(
+    hasEdits && Number.isFinite(Number(input.cardTotal)) ? Number(input.cardTotal) : computed.cardTotal
+  );
+  const orderCount = Math.max(
+    0,
+    Math.floor(
+      Number.isFinite(Number(input.orderCount)) ? Number(input.orderCount) : computed.orderCount
+    )
+  );
+  const voidCount = Math.max(
+    0,
+    Math.floor(
+      Number.isFinite(Number(input.voidCount)) ? Number(input.voidCount) : computed.voidCount
+    )
+  );
+  const discountTotal = roundMoney(
+    Number.isFinite(Number(input.discountTotal)) ? Number(input.discountTotal) : computed.discountTotal
+  );
+
+  let dineInSales = 0;
+  let parcelSales = 0;
+  let deliverySales = 0;
+  for (const o of included.filter((x) => x.status === "SETTLED")) {
+    if (o.type === "DINE_IN") dineInSales += o.total;
+    if (o.type === "PARCEL") parcelSales += o.total;
+    if (o.type === "DELIVERY") deliverySales += o.total;
+  }
+  dineInSales = roundMoney(
+    input.dineInSales != null && Number.isFinite(Number(input.dineInSales))
+      ? Number(input.dineInSales)
+      : dineInSales
+  );
+  parcelSales = roundMoney(
+    input.parcelSales != null && Number.isFinite(Number(input.parcelSales))
+      ? Number(input.parcelSales)
+      : parcelSales
+  );
+  deliverySales = roundMoney(
+    input.deliverySales != null && Number.isFinite(Number(input.deliverySales))
+      ? Number(input.deliverySales)
+      : deliverySales
+  );
 
   const close = await prisma.dayClose.create({
     data: {
@@ -825,12 +1041,12 @@ export async function dayClose(notes?: string) {
       cashTotal,
       upiTotal,
       cardTotal,
-      orderCount: settled.length,
-      voidCount: voids,
+      orderCount,
+      voidCount,
       discountTotal,
       notes:
-        notes?.trim() ||
-        `Local day close · cleared ${uniqueOrders.length} finished order(s)`,
+        input.notes?.trim() ||
+        `Local day close · cleared ${includeOrderIds.length} finished order(s)`,
     },
   });
 
@@ -839,42 +1055,57 @@ export async function dayClose(notes?: string) {
     select: { name: true, reportEmail: true },
   });
 
+  const reportPayload = {
+    outletName: outlet?.name || "Outlet",
+    businessDate: start.toLocaleDateString("en-IN"),
+    totalSales,
+    orderCount,
+    voidCount,
+    discountTotal,
+    cashTotal,
+    upiTotal,
+    cardTotal,
+    dineInSales,
+    parcelSales,
+    deliverySales,
+    toEmail: (input.toEmail?.trim() || outlet?.reportEmail || process.env.REPORT_EMAIL || "").trim(),
+    notes: input.notes?.trim() || undefined,
+  };
+
   let emailSent = false;
+  let archivedPath: string | null = null;
   try {
-    const { sendDailyReportEmail } = await import("@/lib/email");
-    emailSent = await sendDailyReportEmail({
-      outletName: outlet?.name || "Outlet",
-      businessDate: start.toLocaleDateString("en-IN"),
-      totalSales,
-      orderCount: settled.length,
-      voidCount: voids,
-      discountTotal,
-      cashTotal,
-      upiTotal,
-      cardTotal,
-      toEmail: outlet?.reportEmail || process.env.REPORT_EMAIL || "",
-    });
+    const { buildDayReportPdf, sendDailyReportEmail, archiveDayReportPdf } = await import(
+      "@/lib/email"
+    );
+    const pdf = await buildDayReportPdf(reportPayload);
+    try {
+      archivedPath = await archiveDayReportPdf(reportPayload, pdf);
+    } catch (e) {
+      console.error("[dayClose] archive failed", e);
+    }
+    try {
+      emailSent = await sendDailyReportEmail(reportPayload, pdf);
+    } catch (e) {
+      console.error("[dayClose] email failed", e);
+    }
   } catch (e) {
-    console.error("[dayClose] email failed", e);
+    console.error("[dayClose] PDF failed", e);
   }
 
-  const orderIds = uniqueOrders.map((o) => o.id);
-
-  // Clear finished order data locally (items / KOT / payments cascade)
-  if (orderIds.length) {
+  if (includeOrderIds.length) {
     await prisma.order.deleteMany({
-      where: { id: { in: orderIds }, outletId },
+      where: { id: { in: includeOrderIds }, outletId },
     });
     await prisma.auditLog.deleteMany({
       where: {
         outletId,
         entity: "Order",
-        entityId: { in: orderIds },
+        entityId: { in: includeOrderIds },
       },
     });
   }
 
-  // Heal floor: free all tables; partners back to available
   await prisma.diningTable.updateMany({
     where: { outletId, status: { not: "RESERVED" } },
     data: { status: "FREE", mergedInto: null },
@@ -889,7 +1120,7 @@ export async function dayClose(notes?: string) {
       action: "DAY_CLOSE",
       entity: "DayClose",
       entityId: close.id,
-      details: `sales=${totalSales}|orders=${settled.length}|cleared=${orderIds.length}`,
+      details: `sales=${totalSales}|orders=${orderCount}|cleared=${includeOrderIds.length}|archived=${archivedPath ? "1" : "0"}`,
       outletId,
       userId: session.user.id,
     },
@@ -906,9 +1137,10 @@ export async function dayClose(notes?: string) {
   revalidatePath("/cash");
   return {
     id: close.id,
-    clearedOrders: orderIds.length,
+    clearedOrders: includeOrderIds.length,
     totalSales,
     emailSent,
+    archived: !!archivedPath,
   };
 }
 

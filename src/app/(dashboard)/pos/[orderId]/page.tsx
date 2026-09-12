@@ -1,6 +1,7 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
+import { resolveOutletId } from "@/lib/outlet";
 import { can } from "@/lib/permissions";
 import { PosScreen } from "@/components/pos-screen";
 import { orderTypeLabel } from "@/lib/order-types";
@@ -20,10 +21,11 @@ function kitchenStatusForItem(
 export default async function PosOrderPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
   const session = await requirePermission("pos");
+  const outletId = await resolveOutletId(session);
 
   const [categories, order, openOrders, outlet] = await Promise.all([
     prisma.category.findMany({
-      where: { outletId: session.user.outletId, active: true },
+      where: { outletId, active: true },
       orderBy: { sortOrder: "asc" },
       include: {
         items: {
@@ -33,7 +35,7 @@ export default async function PosOrderPage({ params }: { params: Promise<{ order
       },
     }),
     prisma.order.findFirst({
-      where: { id: orderId, outletId: session.user.outletId, status: { in: ["OPEN", "HOLD"] } },
+      where: { id: orderId, outletId, status: { in: ["OPEN", "HOLD"] } },
       include: {
         items: {
           orderBy: { createdAt: "asc" },
@@ -43,15 +45,22 @@ export default async function PosOrderPage({ params }: { params: Promise<{ order
       },
     }),
     prisma.order.findMany({
-      where: { outletId: session.user.outletId, status: { in: ["OPEN", "HOLD"] } },
+      where: { outletId, status: { in: ["OPEN", "HOLD"] } },
       include: { table: true },
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
-    prisma.outlet.findUnique({ where: { id: session.user.outletId } }),
+    prisma.outlet.findUnique({ where: { id: outletId } }),
   ]);
 
-  if (!order) notFound();
+  if (!order) {
+    const any = await prisma.order.findFirst({
+      where: { id: orderId, outletId },
+      select: { status: true },
+    });
+    if (any?.status === "SETTLED") redirect(`/bill/${orderId}`);
+    redirect("/pos");
+  }
 
   return (
     <PosScreen

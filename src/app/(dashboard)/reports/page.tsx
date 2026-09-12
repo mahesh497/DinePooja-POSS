@@ -19,30 +19,35 @@ export default async function ReportsPage() {
   const session = await requirePermission("reports");
   const from = startOfDay();
   const to = endOfDay();
+  const outletId = session.user.outletId;
 
-  const [settled, voids, closes] = await Promise.all([
+  const [settled, voids, closes, openCount, outlet] = await Promise.all([
     prisma.order.findMany({
       where: {
-        outletId: session.user.outletId,
+        outletId,
         status: "SETTLED",
         settledAt: { gte: from, lte: to },
       },
-      include: {
-        payments: true,
-        items: { where: { voided: false } },
-      },
+      include: { payments: true },
     }),
     prisma.order.count({
       where: {
-        outletId: session.user.outletId,
+        outletId,
         status: "VOIDED",
         updatedAt: { gte: from, lte: to },
       },
     }),
     prisma.dayClose.findMany({
-      where: { outletId: session.user.outletId },
+      where: { outletId },
       orderBy: { closedAt: "desc" },
       take: 10,
+    }),
+    prisma.order.count({
+      where: { outletId, status: { in: ["OPEN", "HOLD"] } },
+    }),
+    prisma.outlet.findUnique({
+      where: { id: outletId },
+      select: { name: true, reportEmail: true },
     }),
   ]);
 
@@ -54,8 +59,7 @@ export default async function ReportsPage() {
   let dineIn = 0;
   let parcel = 0;
   let delivery = 0;
-  const itemMap = new Map<string, { qty: number; amount: number }>();
-  const hourMap = new Map<string, { orders: number; sales: number }>();
+  const hourMap = new Map<string, { sales: number }>();
 
   for (const o of settled) {
     sales += o.total;
@@ -68,31 +72,23 @@ export default async function ReportsPage() {
       if (p.method === "UPI") upi += p.amount;
       if (p.method === "CARD") card += p.amount;
     }
-    for (const item of o.items) {
-      const cur = itemMap.get(item.name) ?? { qty: 0, amount: 0 };
-      cur.qty += item.quantity;
-      cur.amount += item.lineTotal;
-      itemMap.set(item.name, cur);
-    }
     const hour = `${String(new Date(o.settledAt ?? o.createdAt).getHours()).padStart(2, "0")}:00`;
-    const h = hourMap.get(hour) ?? { orders: 0, sales: 0 };
-    h.orders += 1;
+    const h = hourMap.get(hour) ?? { sales: 0 };
     h.sales += o.total;
     hourMap.set(hour, h);
   }
 
-  const itemWise = [...itemMap.entries()]
-    .map(([name, v]) => ({ name, ...v }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 15);
-
   const hourly = [...hourMap.entries()]
-    .map(([hour, v]) => ({ hour, ...v }))
+    .map(([hour, v]) => ({ hour, sales: v.sales }))
     .sort((a, b) => a.hour.localeCompare(b.hour));
 
   return (
     <ReportsDashboard
       canClose={can(session.user.role, "day_close")}
+      openCount={openCount}
+      outletName={outlet?.name || session.user.outletName || "Outlet"}
+      reportEmail={outlet?.reportEmail || process.env.REPORT_EMAIL || ""}
+      businessDate={from.toLocaleDateString("en-IN")}
       summary={{
         sales,
         orders: settled.length,
@@ -105,13 +101,11 @@ export default async function ReportsPage() {
         parcel,
         delivery,
       }}
-      itemWise={itemWise}
       hourly={hourly}
       recentCloses={closes.map((c) => ({
         id: c.id,
         closedAt: c.closedAt.toISOString(),
         totalSales: c.totalSales,
-        orderCount: c.orderCount,
         cashTotal: c.cashTotal,
         upiTotal: c.upiTotal,
         cardTotal: c.cardTotal,

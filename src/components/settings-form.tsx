@@ -174,7 +174,8 @@ export function SettingsForm({
       >
         <h2 className="font-[family-name:var(--font-display)] text-xl">Daily report email</h2>
         <p className="text-sm text-[var(--muted)]">
-          On day close, sales summary is emailed here, then finished orders are cleared locally.
+          On day close, review and edit sales, email a PDF report here, save a copy under{" "}
+          <code>reports/archive/</code>, then finished orders are cleared locally.
           Configure SMTP in <code>.env</code> (<code>SMTP_HOST</code>, <code>SMTP_USER</code>,{" "}
           <code>SMTP_PASS</code>).
         </p>

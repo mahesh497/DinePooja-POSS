@@ -63,3 +63,6 @@ android/.idea
 *.keystore
 mobile/www/.DS_Store
 
+# Day-close PDF archive (local cloud copy)
+/reports/archive/
+

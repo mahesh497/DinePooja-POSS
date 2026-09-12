@@ -31,7 +31,7 @@ export default async function KotPage({
       <div>
         <h1 className="font-[family-name:var(--font-display)] text-3xl">KOT Management</h1>
         <p className="text-sm text-[var(--muted)]">
-          Generate from POS · print · reprint · cancel · merge · split · move items · cooking status
+          Keep open on kitchen POS for auto-print · reprint · cancel · merge · split · cooking status
         </p>
       </div>
       <KotBoard
