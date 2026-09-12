@@ -36,6 +36,8 @@ Next.js App Router (RSC pages + client boards)
 
 ## Data model (summary)
 
+Full field-level reference: [Database schema](./07-database-schema.md).
+
 **Outlet** owns users, halls, tables, menu, orders, cash, customers, coupons, delivery partners.
 
 **Order** — type (`DINE_IN` / `PARCEL` / `DELIVERY`), status (`OPEN` / `HOLD` / `SETTLED` / …), GST totals, payments, optional `deliveryBoy`, `deliveryStatus`, rider/dest GPS.

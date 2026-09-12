@@ -10,6 +10,7 @@ Complete documentation for the **Sampada** restaurant point-of-sale system (PetP
 | [Modules](./04-modules.md) | Everyone | Every screen and what it does |
 | [Roles & permissions](./05-roles.md) | Managers / IT | Who can access what |
 | [Architecture](./06-architecture.md) | Developers | Folders, data model, actions, auth |
+| [Database schema](./07-database-schema.md) | Developers | Full Prisma models, enums, FKs, cascades |
 | [Mobile app](../MOBILE.md) | IT / Developers | Android APK (Capacitor) |
 
 **Quick links**
