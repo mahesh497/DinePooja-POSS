@@ -10,12 +10,14 @@ function kitchenStatusForItem(
   kotItems: { status: string; kot: { status: string } }[]
 ): string | null {
   if (!kotItems.length) return null;
-  const statuses = kotItems.map((k) => k.status);
+  // A partly cancelled line still cooks the remaining quantity
+  const live = kotItems.filter((k) => k.status !== "CANCELLED" && k.status !== "VOIDED");
+  if (!live.length) return kotItems[0].status;
+  const statuses = live.map((k) => k.status);
   if (statuses.every((s) => s === "SERVED")) return "SERVED";
   if (statuses.some((s) => s === "DELAYED")) return "DELAYED";
   if (statuses.some((s) => s === "PREPARING")) return "PREPARING";
-  if (statuses.some((s) => s === "CANCELLED" || s === "VOIDED")) return statuses[0];
-  return kotItems[0]?.kot.status ?? "PENDING";
+  return live[0].kot.status ?? "PENDING";
 }
 
 export default async function PosOrderPage({ params }: { params: Promise<{ orderId: string }> }) {
@@ -118,6 +120,7 @@ export default async function PosOrderPage({ params }: { params: Promise<{ order
           variantName: item.variantName,
           addonNames: item.addonNames,
           voided: item.voided,
+          voidReason: item.voidReason,
           kotSent: item.kotSent,
           kitchenStatus: kitchenStatusForItem(item.kotItems),
         })),

@@ -45,7 +45,7 @@ export function buildDayReportPdf(payload: DayReportPayload): Promise<Buffer> {
     const labelX = 50;
     const valueX = 320;
 
-    doc.fontSize(18).fillColor("#000").text("DinePooja — Daily sales report", labelX, 50);
+    doc.fontSize(18).fillColor("#000").text("Sampada — Daily sales report", labelX, 50);
     doc.moveDown(0.5);
     doc.fontSize(11).fillColor("#333").text(payload.outletName, labelX);
     doc.text(`Business date: ${payload.businessDate}`);
@@ -112,7 +112,7 @@ export async function archiveDayReportPdf(
   await fs.mkdir(dir, { recursive: true });
   const safeDate = payload.businessDate.replace(/[^\dA-Za-z-]+/g, "-");
   const safeOutlet = payload.outletName.replace(/[^\dA-Za-z]+/g, "-").slice(0, 40) || "outlet";
-  const filename = `DinePooja-${safeDate}-${safeOutlet}.pdf`;
+  const filename = `Sampada-${safeDate}-${safeOutlet}.pdf`;
   const fullPath = path.join(dir, filename);
   await fs.writeFile(fullPath, buffer);
   return fullPath;
@@ -142,12 +142,12 @@ export async function sendDailyReportEmail(
 
   const buffer = pdf ?? (await buildDayReportPdf(payload));
   const safeDate = payload.businessDate.replace(/[^\dA-Za-z-]+/g, "-");
-  const filename = `DinePooja-daily-report-${safeDate}.pdf`;
+  const filename = `Sampada-daily-report-${safeDate}.pdf`;
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
     to: payload.toEmail.trim(),
-    subject: `DinePooja daily report · ${payload.outletName} · ${payload.businessDate}`,
+    subject: `Sampada daily report · ${payload.outletName} · ${payload.businessDate}`,
     text: `Attached: daily sales PDF for ${payload.outletName} (${payload.businessDate}).\nTotal sales: ${rs(payload.totalSales)}`,
     html: `
       <p>Please find the <strong>daily sales report PDF</strong> attached.</p>

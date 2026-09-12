@@ -31,7 +31,7 @@ export default async function KotPage({
       <div>
         <h1 className="font-[family-name:var(--font-display)] text-3xl">KOT Management</h1>
         <p className="text-sm text-[var(--muted)]">
-          Keep open on kitchen POS for auto-print · reprint · cancel · merge · split · cooking status
+          One KOT per table · auto-print new items &amp; cancels · keep this page open on kitchen POS
         </p>
       </div>
       <KotBoard
@@ -42,6 +42,7 @@ export default async function KotPage({
           station: k.station,
           status: k.status,
           createdAt: k.createdAt.toISOString(),
+          updatedAt: k.updatedAt.toISOString(),
           orderId: k.orderId,
           orderNumber: k.order.orderNumber,
           tableName: k.order.table?.name ?? null,

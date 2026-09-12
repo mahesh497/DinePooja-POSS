@@ -14,13 +14,13 @@ import {
   addOrderItem,
   addPayment,
   applyDiscount,
+  cancelOrderItem,
   createChannelOrder,
-  removeUnsentItem,
+  deleteOrderItem,
   sendKot,
   updateItemQuantity,
   updateOrderDetails,
   voidOrder,
-  voidOrderItem,
 } from "@/lib/actions/orders";
 import { applyCouponToOrder, holdOrder } from "@/lib/actions/services";
 import { ONLINE_PLATFORMS, orderTypeLabel } from "@/lib/order-types";
@@ -54,6 +54,7 @@ type OrderItem = {
   variantName: string | null;
   addonNames: string | null;
   voided: boolean;
+  voidReason: string | null;
   kotSent: boolean;
   kitchenStatus: string | null;
 };
@@ -97,6 +98,14 @@ type SortKey = "name" | "price_asc" | "price_desc" | "code" | "popular";
 type DietFilter = "ALL" | "VEG" | "NONVEG";
 
 const FAV_KEY = "dinepooja-pos-favorites";
+
+const CANCEL_REASONS = [
+  "Guest changed the order",
+  "Punched by mistake",
+  "Out of stock",
+  "Too late / taking long",
+  "Quality complaint",
+];
 
 function hasModifiers(item: MenuItem) {
   return item.variants.length > 0 || item.addons.length > 0;
@@ -156,6 +165,10 @@ export function PosScreen({
   const [showUnavailable, setShowUnavailable] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<OrderItem | null>(null);
+  const [cancelQty, setCancelQty] = useState(1);
+  const [cancelReason, setCancelReason] = useState(CANCEL_REASONS[0]);
+  const [showBillDetails, setShowBillDetails] = useState(false);
   const [variantId, setVariantId] = useState("");
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [qty, setQty] = useState(1);
@@ -307,6 +320,38 @@ export function PosScreen({
         setError(e instanceof Error ? e.message : "Failed to add");
       }
     });
+  }
+
+  function openCancel(item: OrderItem) {
+    setCancelTarget(item);
+    setCancelQty(item.quantity);
+    setCancelReason(CANCEL_REASONS[0]);
+  }
+
+  function runItemAction(action: () => Promise<void>, done: string) {
+    startTransition(async () => {
+      try {
+        setError("");
+        await action();
+        setMessage(done);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Action failed");
+      }
+    });
+  }
+
+  function confirmCancelItem() {
+    if (!cancelTarget) return;
+    const target = cancelTarget;
+    const qty = Math.min(Math.max(1, cancelQty), target.quantity);
+    setCancelTarget(null);
+    runItemAction(
+      () => cancelOrderItem(target.id, cancelReason, qty),
+      target.kotSent
+        ? `Cancelled ${qty} × ${target.name} — kitchen gets a cancel slip`
+        : `Removed ${qty} × ${target.name}`
+    );
   }
 
   function startChannel(type: "PARCEL" | "DELIVERY") {
@@ -652,28 +697,21 @@ export function PosScreen({
       </section>
 
       {/* ORDER PANEL */}
-      <aside className="flex w-full shrink-0 flex-col rounded-2xl border border-[var(--line)] bg-white lg:w-[340px] xl:w-[380px]">
-        <div className="border-b border-[var(--line)] p-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-[family-name:var(--font-display)] text-xl">Order</h2>
-            <Link href="/orders" className="text-xs text-[var(--accent)]">
-              All orders
-            </Link>
+      <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-white lg:w-[340px] xl:w-[380px]">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
+          <div className="min-w-0">
+            <h2 className="font-[family-name:var(--font-display)] text-lg leading-none">Order</h2>
+            <p className="mt-1 truncate text-[11px] text-[var(--muted)]">
+              {title} · {order.customerName || "Walk-in"}
+            </p>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg bg-[var(--chip)] px-2 py-1.5">
-              <p className="text-[var(--muted)]">Table / channel</p>
-              <p className="font-semibold">{title}</p>
-            </div>
-            <div className="rounded-lg bg-[var(--chip)] px-2 py-1.5">
-              <p className="text-[var(--muted)]">Customer</p>
-              <p className="truncate font-semibold">{order.customerName || "Walk-in"}</p>
-            </div>
-          </div>
+          <Link href="/orders" className="shrink-0 text-xs text-[var(--accent)]">
+            All orders
+          </Link>
         </div>
 
         {(order.type === "PARCEL" || order.type === "DELIVERY") && (
-          <div className="border-b border-[var(--line)] p-3">
+          <div className="max-h-[24%] min-h-[96px] overflow-y-auto border-b border-[var(--line)] p-3">
             <CustomerPanel
               order={order}
               pending={pending}
@@ -688,7 +726,27 @@ export function PosScreen({
           </div>
         )}
 
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Punched items ({order.items.filter((i) => !i.voided).length})
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowBillDetails((v) => !v)}
+            className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+              showBillDetails ? "bg-[var(--ink)] text-white" : "bg-[var(--chip)]"
+            }`}
+          >
+            {showBillDetails ? "Hide charges & taxes" : "Charges & taxes"}
+          </button>
+        </div>
+
+        {/* Items own most of the panel — row actions must always be reachable */}
+        <div
+          className={`flex-1 basis-0 space-y-2 overflow-y-auto p-2.5 ${
+            showBillDetails ? "min-h-[180px]" : "min-h-[max(260px,52%)]"
+          }`}
+        >
           {order.items.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">Tap items to build the order.</p>
           ) : (
@@ -698,13 +756,19 @@ export function PosScreen({
               return (
                 <div
                   key={item.id}
-                  className={`rounded-xl border border-[var(--line)] bg-[var(--panel)] p-2.5 ${
-                    item.voided ? "opacity-50 line-through" : ""
+                  className={`rounded-xl border bg-[var(--panel)] p-3 ${
+                    item.voided
+                      ? "border-dashed border-[var(--danger)]/40 opacity-70"
+                      : "border-[var(--line)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold leading-tight">
+                      <p
+                        className={`text-[15px] font-semibold leading-tight ${
+                          item.voided ? "line-through" : ""
+                        }`}
+                      >
                         {item.name}
                         {item.variantName ? ` (${item.variantName})` : ""}
                       </p>
@@ -717,78 +781,99 @@ export function PosScreen({
                       {item.notes ? (
                         <p className="text-[11px] text-amber-800">Note: {item.notes}</p>
                       ) : null}
+                      {item.voided ? (
+                        <p className="text-[11px] font-medium text-[var(--danger)]">
+                          Cancelled{item.voidReason ? ` · ${item.voidReason}` : ""}
+                        </p>
+                      ) : null}
                       <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${kb.className}`}>
                         {kb.label}
                       </span>
                     </div>
-                    <p className="shrink-0 text-sm font-semibold">{formatINR(item.lineTotal)}</p>
+                    <p
+                      className={`shrink-0 text-sm font-semibold ${
+                        item.voided ? "line-through" : ""
+                      }`}
+                    >
+                      {formatINR(item.lineTotal)}
+                    </p>
                   </div>
-                  {!item.voided ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {!item.kotSent ? (
-                        <>
-                          <button
-                            type="button"
-                            className="rounded-md bg-white px-2 py-1 text-xs"
-                            onClick={() =>
-                              startTransition(async () => {
-                                await updateItemQuantity(item.id, item.quantity - 1);
-                                router.refresh();
-                              })
-                            }
-                          >
-                            −
-                          </button>
-                          <span className="px-1 py-1 text-xs">{item.quantity}</span>
-                          <button
-                            type="button"
-                            className="rounded-md bg-white px-2 py-1 text-xs"
-                            onClick={() =>
-                              startTransition(async () => {
-                                await updateItemQuantity(item.id, item.quantity + 1);
-                                router.refresh();
-                              })
-                            }
-                          >
-                            +
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md px-2 py-1 text-xs text-[var(--danger)]"
-                            onClick={() =>
-                              startTransition(async () => {
-                                await removeUnsentItem(item.id);
-                                router.refresh();
-                              })
-                            }
-                          >
-                            Remove
-                          </button>
-                        </>
-                      ) : canVoid ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {!item.voided && !item.kotSent ? (
+                      <>
                         <button
                           type="button"
-                          className="rounded-md px-2 py-1 text-xs text-[var(--danger)]"
+                          disabled={pending}
+                          className="min-w-[36px] rounded-lg border border-[var(--line)] bg-white px-3 py-1.5 text-sm font-semibold"
                           onClick={() =>
                             startTransition(async () => {
-                              const reason = prompt("Void reason?") || "Voided";
-                              await voidOrderItem(item.id, reason);
+                              await updateItemQuantity(item.id, item.quantity - 1);
                               router.refresh();
                             })
                           }
                         >
-                          Void
+                          −
                         </button>
-                      ) : null}
-                    </div>
-                  ) : null}
+                        <span className="min-w-[24px] text-center text-sm font-semibold">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          className="min-w-[36px] rounded-lg border border-[var(--line)] bg-white px-3 py-1.5 text-sm font-semibold"
+                          onClick={() =>
+                            startTransition(async () => {
+                              await updateItemQuantity(item.id, item.quantity + 1);
+                              router.refresh();
+                            })
+                          }
+                        >
+                          +
+                        </button>
+                      </>
+                    ) : null}
+                    {!item.voided ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        className="rounded-lg border border-[var(--danger)] px-3 py-1.5 text-xs font-semibold text-[var(--danger)]"
+                        onClick={() => openCancel(item)}
+                      >
+                        Cancel item
+                      </button>
+                    ) : null}
+                    {canVoid ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        title="Remove this line from the order permanently"
+                        className="rounded-lg bg-[var(--chip)] px-3 py-1.5 text-xs font-semibold text-[var(--muted)]"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Delete ${item.quantity} × ${item.name} from this order? This cannot be undone.`
+                            )
+                          )
+                            return;
+                          runItemAction(() => deleteOrderItem(item.id), `Deleted ${item.name}`);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               );
             })
           )}
         </div>
 
-        <div className="space-y-2 border-t border-[var(--line)] p-3 text-sm">
+        {/* Collapsed by default so charges and tax rows can't squeeze the items list */}
+        <div
+          className={`space-y-2 overflow-y-auto border-t border-[var(--line)] px-3 text-sm ${
+            showBillDetails ? "max-h-[32%] shrink py-3" : "hidden"
+          }`}
+        >
           <label className="block text-xs">
             <span className="text-[var(--muted)]">Special notes</span>
             <div className="mt-1 flex gap-1">
@@ -860,9 +945,7 @@ export function PosScreen({
             <Row label="  CGST" value={formatINR(order.cgstAmount)} />
             <Row label="  SGST" value={formatINR(order.sgstAmount)} />
             <Row label="Round off" value={formatINR(order.roundOff)} />
-            <Row label="Grand total" value={formatINR(order.total)} bold />
             <Row label="Paid" value={formatINR(order.paidAmount)} />
-            <Row label="Balance" value={formatINR(balance)} bold />
           </div>
 
           {canDiscount ? (
@@ -920,7 +1003,35 @@ export function PosScreen({
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          {canVoid ? (
+            <button
+              type="button"
+              className="w-full rounded-xl border border-[var(--danger)] px-3 py-1.5 text-[11px] text-[var(--danger)]"
+              onClick={() =>
+                startTransition(async () => {
+                  const reason = prompt("Void entire order reason?") || "Voided";
+                  await voidOrder(order.id, reason);
+                  router.push("/orders");
+                })
+              }
+            >
+              Void order
+            </button>
+          ) : null}
+        </div>
+
+        {/* Capped and self-scrolling so billing controls can never starve the items list */}
+        <div className="min-h-[140px] max-h-[38%] shrink space-y-1.5 overflow-y-auto border-t border-[var(--line)] bg-white p-2.5 text-sm">
+          <div className="flex items-baseline justify-between gap-2 rounded-xl bg-[var(--chip)] px-3 py-1.5">
+            <p className="font-[family-name:var(--font-display)] text-lg leading-none">
+              {formatINR(order.total)}
+            </p>
+            <p className="text-[11px] text-[var(--muted)]">
+              Balance <span className="font-semibold text-[var(--ink)]">{formatINR(balance)}</span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
               disabled={pending}
@@ -930,7 +1041,7 @@ export function PosScreen({
                   try {
                     setError("");
                     await sendKot(order.id);
-                    setMessage("KOT sent — kitchen POS will auto-print");
+                    setMessage("KOT sent — kitchen will print (same ticket per table)");
                     router.refresh();
                   } catch (e) {
                     setError(e instanceof Error ? e.message : "KOT failed");
@@ -966,9 +1077,8 @@ export function PosScreen({
             </Link>
           </div>
 
-          <div className="space-y-1.5 rounded-xl bg-[var(--chip)] p-2.5">
-            <p className="text-xs font-medium">Collect payment</p>
-            <div className="flex gap-1">
+          <div className="space-y-1.5 rounded-xl bg-[var(--chip)] p-2">
+            <div className="flex items-center gap-1">
               {(["CASH", "UPI", "CARD"] as const).map((m) => (
                 <button
                   key={m}
@@ -981,13 +1091,20 @@ export function PosScreen({
                   {m}
                 </button>
               ))}
+              <input
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                placeholder={`Bal ${balance}`}
+                className="ml-1 min-w-0 flex-1 rounded-lg border border-[var(--line)] bg-white px-2 py-1.5 text-xs"
+              />
+              <button
+                type="button"
+                className="rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold"
+                onClick={() => setPayAmount(String(balance))}
+              >
+                Full
+              </button>
             </div>
-            <input
-              value={payAmount}
-              onChange={(e) => setPayAmount(e.target.value)}
-              placeholder={`Amount (balance ${balance})`}
-              className="w-full rounded-lg border border-[var(--line)] bg-white px-2 py-1.5 text-xs"
-            />
             {payMethod !== "CASH" ? (
               <input
                 value={payRef}
@@ -996,65 +1113,130 @@ export function PosScreen({
                 className="w-full rounded-lg border border-[var(--line)] bg-white px-2 py-1.5 text-xs"
               />
             ) : null}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="flex-1 rounded-lg bg-white px-2 py-1.5 text-xs"
-                onClick={() => setPayAmount(String(balance))}
-              >
-                Full
-              </button>
-              <button
-                type="button"
-                disabled={pending || order.status !== "OPEN"}
-                className="flex-1 rounded-lg bg-[var(--accent)] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                onClick={() =>
-                  startTransition(async () => {
-                    try {
-                      setError("");
-                      const amount = Number(payAmount || balance);
-                      const settled = await addPayment({
-                        orderId: order.id,
-                        amount,
-                        method: payMethod,
-                        reference: payRef || undefined,
-                      });
-                      setPayAmount("");
-                      setPayRef("");
-                      setMessage(settled ? "Order settled" : "Partial payment recorded");
-                      router.refresh();
-                      if (settled) router.push(`/bill/${order.id}`);
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : "Payment failed");
-                    }
-                  })
-                }
-              >
-                Pay
-              </button>
-            </div>
-          </div>
-
-          {canVoid ? (
             <button
               type="button"
-              className="w-full rounded-xl border border-[var(--danger)] px-3 py-2 text-xs text-[var(--danger)]"
+              disabled={pending || order.status !== "OPEN"}
+              className="w-full rounded-lg bg-[var(--accent)] px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
               onClick={() =>
                 startTransition(async () => {
-                  const reason = prompt("Void entire order reason?") || "Voided";
-                  await voidOrder(order.id, reason);
-                  router.push("/orders");
+                  try {
+                    setError("");
+                    const amount = Number(payAmount || balance);
+                    const settled = await addPayment({
+                      orderId: order.id,
+                      amount,
+                      method: payMethod,
+                      reference: payRef || undefined,
+                    });
+                    setPayAmount("");
+                    setPayRef("");
+                    setMessage(settled ? "Order settled" : "Partial payment recorded");
+                    router.refresh();
+                    if (settled) router.push(`/bill/${order.id}`);
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "Payment failed");
+                  }
                 })
               }
             >
-              Void order
+              Pay
             </button>
-          ) : null}
+          </div>
 
           {message ? <p className="text-xs text-[var(--ok)]">{message}</p> : null}
           {error ? <p className="text-xs text-[var(--danger)]">{error}</p> : null}
         </div>
       </aside>
+
+      {cancelTarget ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="font-[family-name:var(--font-display)] text-2xl">Cancel item</h3>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {cancelTarget.name}
+              {cancelTarget.variantName ? ` (${cancelTarget.variantName})` : ""} · Qty{" "}
+              {cancelTarget.quantity} · {formatINR(cancelTarget.lineTotal)}
+            </p>
+            <p className="mt-2 rounded-lg bg-[var(--chip)] px-3 py-2 text-xs">
+              {cancelTarget.kotSent
+                ? "Already sent to the kitchen — a cancel slip prints on the KOT screen and the line stays on record."
+                : "Not sent to the kitchen yet — this line is removed from the order."}
+            </p>
+
+            {cancelTarget.quantity > 1 ? (
+              <div className="mt-4">
+                <p className="mb-2 text-sm font-medium">Quantity to cancel</p>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="rounded-lg bg-[var(--chip)] px-3 py-2"
+                    onClick={() => setCancelQty((q) => Math.max(1, q - 1))}
+                  >
+                    −
+                  </button>
+                  <span className="text-lg font-semibold">{cancelQty}</span>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-[var(--chip)] px-3 py-2"
+                    onClick={() => setCancelQty((q) => Math.min(cancelTarget.quantity, q + 1))}
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-auto rounded-lg border border-[var(--line)] px-3 py-2 text-xs"
+                    onClick={() => setCancelQty(cancelTarget.quantity)}
+                  >
+                    Whole line
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4">
+              <p className="mb-2 text-sm font-medium">Reason</p>
+              <div className="flex flex-wrap gap-2">
+                {CANCEL_REASONS.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setCancelReason(r)}
+                    className={`rounded-lg px-3 py-2 text-xs ${
+                      cancelReason === r ? "bg-[var(--accent)] text-white" : "bg-[var(--chip)]"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Reason for cancellation"
+                className="mt-2 w-full rounded-lg border border-[var(--line)] px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-[var(--line)] px-3 py-3"
+                onClick={() => setCancelTarget(null)}
+              >
+                Keep item
+              </button>
+              <button
+                type="button"
+                disabled={pending || !cancelReason.trim()}
+                className="flex-1 rounded-xl bg-[var(--danger)] px-3 py-3 font-semibold text-white disabled:opacity-50"
+                onClick={confirmCancelItem}
+              >
+                Cancel {cancelQty} × item
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedItem ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">

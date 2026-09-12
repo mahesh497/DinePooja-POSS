@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "DinePooja POS",
-    short_name: "DinePooja",
+    name: "Sampada POS",
+    short_name: "Sampada",
     description: "Restaurant POS — billing, KOT, tables, delivery & reports",
     start_url: "/dashboard",
     scope: "/",

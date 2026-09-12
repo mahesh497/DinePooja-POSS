@@ -171,7 +171,7 @@ export function EnterpriseShell({
             <BrandLogo size={34} />
             <div className="hidden min-w-0 sm:block">
               <p className="font-[family-name:var(--font-display)] text-base leading-tight text-[var(--accent)]">
-                DinePooja
+                Sampada
               </p>
               <p className="truncate text-[10px] text-[var(--muted)]">
                 {outletName} · ID {shortId}
@@ -309,7 +309,7 @@ export function EnterpriseShell({
             {!collapsed ? (
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{outletName}</p>
-                <p className="text-[10px] text-[var(--muted)]">{role} · Restaurant POS</p>
+                <p className="text-[10px] text-[var(--muted)]">{role} · Sampada POS</p>
               </div>
             ) : null}
             <button

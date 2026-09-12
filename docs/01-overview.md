@@ -2,7 +2,7 @@
 
 ## Product
 
-**DinePooja POS** is a full restaurant point-of-sale for dine-in, parcel, and delivery:
+**Sampada POS** is a full restaurant point-of-sale for dine-in, parcel, and delivery:
 
 - Floor / table management with hall stages  
 - Fast billing POS with GST  

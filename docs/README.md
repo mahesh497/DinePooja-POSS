@@ -1,6 +1,6 @@
-# DinePooja POS — Documentation
+# Sampada POS — Documentation
 
-Complete documentation for the **DinePooja** restaurant point-of-sale system (PetPooja-style).
+Complete documentation for the **Sampada** restaurant point-of-sale system (PetPooja-style).
 
 | Doc | Audience | Contents |
 |-----|----------|----------|

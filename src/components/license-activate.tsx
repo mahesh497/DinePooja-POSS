@@ -14,7 +14,7 @@ export function LicenseActivate({ expiresAt }: { expiresAt: string }) {
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#ecfdf5,transparent_55%),linear-gradient(180deg,#f8fafc,#e2e8f0)] p-6">
       <div className="w-full max-w-md rounded-3xl border border-[var(--line)] bg-white p-8 shadow-xl">
         <p className="text-xs font-semibold uppercase tracking-widest text-teal-700">License expired</p>
-        <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl">Unlock DinePooja</h1>
+        <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl">Unlock Sampada</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           This installation expired on {new Date(expiresAt).toLocaleDateString("en-IN")}. Enter the
           6-digit unlock code from your vendor to extend for another 6 months.

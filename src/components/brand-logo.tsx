@@ -5,7 +5,7 @@ type BrandLogoProps = {
   wordmarkClassName?: string;
 };
 
-/** Food cloche + steam mark for DinePooja */
+/** Food cloche + steam mark for Sampada */
 export function BrandLogo({
   size = 36,
   className = "",
@@ -54,7 +54,7 @@ export function BrandLogo({
         <span
           className={`font-[family-name:var(--font-display)] font-semibold tracking-tight text-[var(--ink)] ${wordmarkClassName}`}
         >
-          DinePooja
+          Sampada
         </span>
       ) : null}
     </div>

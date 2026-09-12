@@ -16,13 +16,13 @@ const body = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "DinePooja POS",
+  title: "Sampada POS",
   description: "Restaurant point of sale — billing, KOT, tables, delivery, and reports",
-  applicationName: "DinePooja POS",
+  applicationName: "Sampada POS",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "DinePooja",
+    title: "Sampada",
   },
   formatDetection: {
     telephone: false,

@@ -1,4 +1,4 @@
-# DinePooja POS — system requirements
+# Sampada POS — system requirements
 # (Node app: install packages with `npm install`, not pip)
 
 # Runtime

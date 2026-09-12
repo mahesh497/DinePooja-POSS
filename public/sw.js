@@ -1,4 +1,4 @@
-/* DinePooja POS — lightweight offline shell */
+/* Sampada POS — lightweight offline shell */
 const CACHE = "dinepooja-shell-v1";
 const PRECACHE = ["/", "/login", "/icons/icon-192.png", "/icons/icon-512.png"];
 

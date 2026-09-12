@@ -12,9 +12,9 @@ import {
   setKotDelayed,
   splitKotItems,
 } from "@/lib/actions/table-ops";
-import { printKotTicket } from "@/lib/kot-print";
+import { printKotTicket, type KotPrintMode } from "@/lib/kot-print";
 
-const AUTO_PRINT_KEY = "dinepooja-kot-auto-printed";
+const AUTO_PRINT_KEY = "dinepooja-kot-print-sig";
 const AUTO_PRINT_PREF = "dinepooja-kot-auto-print-on";
 
 type KotItem = {
@@ -31,6 +31,7 @@ type KotCard = {
   station: string;
   status: string;
   createdAt: string;
+  updatedAt: string;
   orderId: string;
   orderNumber: string;
   tableName: string | null;
@@ -57,17 +58,35 @@ function statusBadge(status: string) {
   return "bg-[var(--chip)] text-[var(--ink)]";
 }
 
-function readPrintedIds(): Set<string> {
+function activeItemIds(kot: KotCard) {
+  return kot.items
+    .filter((i) => i.status !== "VOIDED" && i.status !== "CANCELLED")
+    .map((i) => i.id)
+    .sort();
+}
+
+function cancelledItemIds(kot: KotCard) {
+  return kot.items
+    .filter((i) => i.status === "VOIDED" || i.status === "CANCELLED")
+    .map((i) => i.id)
+    .sort();
+}
+
+function kotSig(kot: KotCard) {
+  return `${activeItemIds(kot).join(",")}|${cancelledItemIds(kot).join(",")}`;
+}
+
+function readPrintSigs(): Record<string, string> {
   try {
     const raw = sessionStorage.getItem(AUTO_PRINT_KEY);
-    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
   } catch {
-    return new Set();
+    return {};
   }
 }
 
-function writePrintedIds(ids: Set<string>) {
-  sessionStorage.setItem(AUTO_PRINT_KEY, JSON.stringify([...ids]));
+function writePrintSigs(map: Record<string, string>) {
+  sessionStorage.setItem(AUTO_PRINT_KEY, JSON.stringify(map));
 }
 
 export function KotBoard({
@@ -102,36 +121,62 @@ export function KotBoard({
     }
   }, []);
 
-  // Keep kitchen board live so waiter "Send KOT" shows up quickly
+  // Keep kitchen board live for Send KOT + item cancels
   useEffect(() => {
-    const id = window.setInterval(() => router.refresh(), 2500);
+    const id = window.setInterval(() => router.refresh(), 1500);
     return () => window.clearInterval(id);
   }, [router]);
 
-  // Auto-print new tickets on this kitchen POS (skip ones already on screen at open)
+  // Auto-print: new KOT, added items, or cancelled items (real-time for kitchen POS)
   useEffect(() => {
     if (!seededRef.current) {
       seededRef.current = true;
-      const printed = readPrintedIds();
-      for (const k of kots) printed.add(k.id);
-      writePrintedIds(printed);
+      const sigs = readPrintSigs();
+      for (const k of kots) sigs[k.id] = kotSig(k);
+      writePrintSigs(sigs);
       return;
     }
     if (!autoPrint) return;
 
-    const printed = readPrintedIds();
-    const fresh = kots.filter(
-      (k) =>
-        (k.status === "PENDING" || k.status === "PREPARING") && !printed.has(k.id)
-    );
-    if (!fresh.length) return;
+    const sigs = readPrintSigs();
+    let printed = 0;
 
-    for (const kot of fresh) {
-      printKotTicket(kot, false);
-      printed.add(kot.id);
+    for (const kot of kots) {
+      if (["SERVED"].includes(kot.status)) {
+        sigs[kot.id] = kotSig(kot);
+        continue;
+      }
+      const next = kotSig(kot);
+      const prev = sigs[kot.id];
+      if (prev === next) continue;
+
+      let mode: KotPrintMode = "new";
+      if (prev) {
+        const [prevActive, prevCancel = ""] = prev.split("|");
+        const [nextActive, nextCancel = ""] = next.split("|");
+        const prevCancelSet = new Set(prevCancel ? prevCancel.split(",") : []);
+        const nextCancelSet = new Set(nextCancel ? nextCancel.split(",") : []);
+        const newCancels = [...nextCancelSet].filter((id) => id && !prevCancelSet.has(id));
+        if (newCancels.length > 0) mode = "cancel";
+        else if (nextActive !== prevActive) mode = "update";
+        else {
+          sigs[kot.id] = next;
+          continue;
+        }
+      }
+
+      printKotTicket(kot, mode);
+      sigs[kot.id] = next;
+      printed += 1;
     }
-    writePrintedIds(printed);
-    setMessage(`Auto-printed ${fresh.length} KOT ticket(s)`);
+
+    // Drop sigs for KOTs no longer in list
+    const live = new Set(kots.map((k) => k.id));
+    for (const id of Object.keys(sigs)) {
+      if (!live.has(id)) delete sigs[id];
+    }
+    writePrintSigs(sigs);
+    if (printed) setMessage(`Kitchen auto-printed ${printed} ticket(s)`);
   }, [kots, autoPrint]);
 
   const counts = useMemo(() => {
@@ -179,10 +224,10 @@ export function KotBoard({
   }
 
   function printKot(kot: KotCard, reprint = false) {
-    printKotTicket(kot, reprint);
-    const printed = readPrintedIds();
-    printed.add(kot.id);
-    writePrintedIds(printed);
+    printKotTicket(kot, reprint ? "reprint" : "new");
+    const sigs = readPrintSigs();
+    sigs[kot.id] = kotSig(kot);
+    writePrintSigs(sigs);
   }
 
   return (
@@ -202,10 +247,10 @@ export function KotBoard({
               }
             }}
           />
-          Auto-print new KOTs on this kitchen screen
+          Auto-print new items &amp; cancels on this kitchen screen
         </label>
         <span className="text-xs text-[var(--muted)]">
-          Keep this page open on the kitchen POS. When a waiter taps Send KOT, tickets print here.
+          One KOT per table. Send KOT adds items to the same ticket; voiding an item prints a cancel slip here.
         </span>
       </div>
 

@@ -1,4 +1,4 @@
-# DinePooja mobile app (Android)
+# Sampada mobile app (Android)
 
 The POS is a **Capacitor native app** that opens your Next.js server inside a fullscreen Android WebView (real installable APK, home-screen icon, native GPS).
 
@@ -70,7 +70,7 @@ In Android Studio:
 
 ## 5. What you get on the phone
 
-- Installable **DinePooja POS** app icon
+- Installable **Sampada POS** app icon
 - Fullscreen (no browser chrome)
 - Android back button → previous screen
 - Native **GPS** for Delivery partner tracking

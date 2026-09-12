@@ -34,7 +34,7 @@ export default async function ServiceRenewalPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-[var(--line)] p-3">
             <p className="text-xs uppercase text-[var(--muted)]">Subscription</p>
-            <p className="font-semibold">DinePooja Demo Pro</p>
+            <p className="font-semibold">Sampada Demo Pro</p>
           </div>
           <div className="rounded-xl border border-[var(--line)] p-3">
             <p className="text-xs uppercase text-[var(--muted)]">Renews on</p>

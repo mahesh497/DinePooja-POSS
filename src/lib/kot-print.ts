@@ -17,13 +17,23 @@ export type KotPrintPayload = {
   items: KotPrintItem[];
 };
 
-export function printKotTicket(kot: KotPrintPayload, reprint = false) {
+export type KotPrintMode = "new" | "update" | "cancel" | "reprint";
+
+function isCancelled(status?: string) {
+  return status === "CANCELLED" || status === "VOIDED";
+}
+
+export function printKotTicket(kot: KotPrintPayload, mode: KotPrintMode | boolean = "new") {
   if (typeof window === "undefined") return;
+  const printMode: KotPrintMode = typeof mode === "boolean" ? (mode ? "reprint" : "new") : mode;
+
   const w = window.open("", "_blank", "width=400,height=600");
   if (!w) return;
 
-  const lines = kot.items
-    .filter((i) => i.status !== "CANCELLED" && i.status !== "VOIDED")
+  const active = kot.items.filter((i) => !isCancelled(i.status));
+  const cancelled = kot.items.filter((i) => isCancelled(i.status));
+
+  const activeLines = active
     .map(
       (i) =>
         `<li><strong>${i.quantity}x</strong> ${escapeHtml(i.name)}${
@@ -32,21 +42,54 @@ export function printKotTicket(kot: KotPrintPayload, reprint = false) {
     )
     .join("");
 
+  const cancelLines = cancelled
+    .map(
+      (i) =>
+        `<li class="cancel"><strong>CANCEL ${i.quantity}x</strong> ${escapeHtml(i.name)}${
+          i.notes ? " (" + escapeHtml(i.notes) + ")" : ""
+        }</li>`
+    )
+    .join("");
+
+  const title =
+    printMode === "cancel"
+      ? "CANCEL UPDATE"
+      : printMode === "update"
+        ? "KOT UPDATE · NEW ITEMS"
+        : printMode === "reprint"
+          ? "REPRINT"
+          : "NEW KOT";
+
   w.document.write(`
     <html><head><title>KOT ${kot.kotNumber}</title>
     <style>
       body{font-family:monospace;padding:12px;font-size:14px}
       h1{font-size:18px;margin:0 0 8px}
+      h2{font-size:14px;margin:12px 0 6px;text-transform:uppercase}
       p{margin:4px 0}
       li{margin:8px 0;font-size:16px}
+      li.cancel{color:#000;text-decoration:line-through;font-weight:bold}
+      .banner{border:2px solid #000;padding:6px;margin:8px 0;font-weight:bold;text-align:center}
       hr{border:none;border-top:1px dashed #000;margin:10px 0}
     </style>
     </head><body>
-    <h1>${reprint ? "REPRINT · " : ""}KOT #${kot.kotNumber} · ${escapeHtml(kot.station)}</h1>
+    <div class="banner">${title}</div>
+    <h1>KOT #${kot.kotNumber}</h1>
     <p>${kot.tableName ? "Table " + escapeHtml(kot.tableName) : escapeHtml(kot.orderTypeLabel)} · ${escapeHtml(kot.orderNumber)}</p>
-    <p>${new Date(kot.createdAt).toLocaleString()}</p>
+    <p>${new Date().toLocaleString()}</p>
     <hr/>
-    <ul>${lines}</ul>
+    ${
+      printMode === "cancel" && cancelLines
+        ? `<h2>Cancelled — do not prepare</h2><ul>${cancelLines}</ul><hr/>`
+        : ""
+    }
+    <h2>${printMode === "cancel" ? "Remaining order" : "Items to prepare"}</h2>
+    <ul>${activeLines || "<li>(none)</li>"}</ul>
+    ${
+      printMode !== "cancel" && cancelLines
+        ? `<hr/><h2>Cancelled</h2><ul>${cancelLines}</ul>`
+        : ""
+    }
     <script>
       window.onload = function() {
         window.print();

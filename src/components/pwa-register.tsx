@@ -60,7 +60,7 @@ export function PwaRegister() {
           <Download className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">Install DinePooja app</p>
+          <p className="font-semibold">Install Sampada app</p>
           <p className="mt-0.5 text-xs text-[var(--muted)]">
             Add to your home screen for fullscreen POS on tablet or phone.
           </p>

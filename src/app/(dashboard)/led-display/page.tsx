@@ -43,7 +43,7 @@ export default async function LedDisplayPage() {
   ]);
 
   const tickerParts = [
-    `Welcome to ${outlet?.name || "DinePooja"}`,
+    `Welcome to ${outlet?.name || "Sampada"}`,
     ...specials.map((s) => `★ ${s.name} — ₹${s.price}`),
     "Ask staff for today's specials",
     "Thank you for dining with us",
@@ -61,7 +61,7 @@ export default async function LedDisplayPage() {
       }
     >
       <LedDisplayBoard
-        outletName={outlet?.name || "DinePooja"}
+        outletName={outlet?.name || "Sampada"}
         ticker={tickerParts.join("   •   ")}
         order={
           order

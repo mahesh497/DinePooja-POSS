@@ -490,7 +490,7 @@ async function main() {
     },
   });
 
-  console.log("Seeded DinePooja POS demo data");
+  console.log("Seeded Sampada POS demo data");
   console.log("Login: owner@dinepooja.local / password123");
   console.log("Example item code: 30 = Hot Fry Piece Biryani");
 }

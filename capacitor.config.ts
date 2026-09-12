@@ -9,7 +9,7 @@ const serverUrl =
 
 const config: CapacitorConfig = {
   appId: "com.dinepooja.pos",
-  appName: "DinePooja POS",
+  appName: "Sampada POS",
   webDir: "mobile/www",
   backgroundColor: "#0f766e",
   server: {

@@ -1,4 +1,4 @@
-# DinePooja POS
+# Sampada POS
 
 Restaurant point-of-sale (PetPooja-style): billing, KOT, tables, delivery GPS, GST, reports — web, PWA, and Android.
 

@@ -368,10 +368,174 @@ export async function removeUnsentItem(orderItemId: string) {
   revalidatePath("/tables");
 }
 
+/** Touch parent KOT(s) so the kitchen board picks up a cancel print in real time */
+async function refreshKotsAfterItemChange(kotIds: string[]) {
+  for (const kotId of [...new Set(kotIds)]) {
+    const total = await prisma.kotItem.count({ where: { kotId } });
+    if (total === 0) {
+      await prisma.kot.delete({ where: { id: kotId } });
+      continue;
+    }
+    const remaining = await prisma.kotItem.count({
+      where: { kotId, status: { notIn: ["VOIDED", "CANCELLED"] } },
+    });
+    await prisma.kot.update({
+      where: { id: kotId },
+      data: { updatedAt: new Date(), status: remaining === 0 ? "CANCELLED" : undefined },
+    });
+  }
+}
+
+/** Free the table once an order has no billable items left */
+async function releaseTableIfOrderEmpty(orderId: string, tableId: string | null) {
+  if (!tableId) return;
+  const remaining = await prisma.orderItem.count({
+    where: { orderId, voided: false },
+  });
+  if (remaining === 0) await releaseTable(tableId);
+}
+
+/**
+ * Cancel a punched item from POS. Unsent lines are removed outright; lines already
+ * on a KOT are struck off with a reason so the kitchen gets a cancel slip.
+ * Pass `quantity` to cancel part of a line.
+ */
+export async function cancelOrderItem(
+  orderItemId: string,
+  reason: string,
+  quantity?: number
+) {
+  const session = await requirePermission("pos");
+  const item = await prisma.orderItem.findFirst({
+    where: { id: orderItemId, order: { outletId: session.user.outletId } },
+    include: {
+      order: { select: { id: true, status: true, tableId: true } },
+      kotItems: { select: { id: true, kotId: true, quantity: true, status: true, name: true } },
+    },
+  });
+  if (!item) throw new Error("Item not found");
+  if (item.voided) throw new Error("Item is already cancelled");
+  if (!["OPEN", "HOLD"].includes(item.order.status)) throw new Error("Order is closed");
+
+  const note = reason.trim() || "Cancelled";
+  const cancelQty = Math.min(Math.max(1, Math.floor(quantity ?? item.quantity)), item.quantity);
+  const wholeLine = cancelQty >= item.quantity;
+  const kotIds = item.kotItems.map((k) => k.kotId);
+
+  if (wholeLine && !item.kotSent) {
+    await prisma.orderItem.delete({ where: { id: item.id } });
+  } else if (wholeLine) {
+    await prisma.orderItem.update({
+      where: { id: item.id },
+      data: { voided: true, voidReason: note },
+    });
+    await prisma.kotItem.updateMany({
+      where: { orderItemId: item.id },
+      data: { status: "CANCELLED" },
+    });
+  } else {
+    const keepQty = item.quantity - cancelQty;
+    await prisma.orderItem.update({
+      where: { id: item.id },
+      data: { quantity: keepQty, lineTotal: roundMoney(item.unitPrice * keepQty) },
+    });
+    let left = cancelQty;
+    const live = item.kotItems.filter((k) => !["VOIDED", "CANCELLED"].includes(k.status));
+    for (const kotItem of live) {
+      if (left <= 0) break;
+      const take = Math.min(left, kotItem.quantity);
+      left -= take;
+      if (take >= kotItem.quantity) {
+        await prisma.kotItem.update({
+          where: { id: kotItem.id },
+          data: { status: "CANCELLED", notes: note },
+        });
+      } else {
+        await prisma.kotItem.update({
+          where: { id: kotItem.id },
+          data: { quantity: kotItem.quantity - take },
+        });
+        // Separate struck-off line keeps the cancelled quantity visible to the kitchen
+        await prisma.kotItem.create({
+          data: {
+            kotId: kotItem.kotId,
+            orderItemId: item.id,
+            name: kotItem.name,
+            notes: note,
+            quantity: take,
+            status: "CANCELLED",
+          },
+        });
+      }
+    }
+  }
+
+  await refreshKotsAfterItemChange(kotIds);
+  await prisma.auditLog.create({
+    data: {
+      action: "CANCEL_ITEM",
+      entity: "OrderItem",
+      entityId: orderItemId,
+      details: `${cancelQty}x ${item.name} — ${note}`,
+      outletId: session.user.outletId,
+      userId: session.user.id,
+    },
+  });
+  await recomputeOrderTotals(item.orderId);
+  await releaseTableIfOrderEmpty(item.orderId, item.order.tableId);
+
+  revalidatePath("/pos");
+  revalidatePath(`/pos/${item.orderId}`);
+  revalidatePath("/kot");
+  revalidatePath("/tables");
+  revalidatePath("/orders");
+}
+
+/** Permanently drop a single line (including cancelled ones) from an open order. */
+export async function deleteOrderItem(orderItemId: string) {
+  const session = await requirePermission("void");
+  const item = await prisma.orderItem.findFirst({
+    where: { id: orderItemId, order: { outletId: session.user.outletId } },
+    include: {
+      order: { select: { id: true, status: true, tableId: true } },
+      kotItems: { select: { kotId: true } },
+    },
+  });
+  if (!item) throw new Error("Item not found");
+  if (!["OPEN", "HOLD"].includes(item.order.status)) throw new Error("Order is closed");
+
+  const kotIds = item.kotItems.map((k) => k.kotId);
+  await prisma.orderItem.delete({ where: { id: item.id } });
+  await refreshKotsAfterItemChange(kotIds);
+
+  await prisma.auditLog.create({
+    data: {
+      action: "DELETE_ITEM",
+      entity: "OrderItem",
+      entityId: orderItemId,
+      details: `Deleted ${item.quantity}x ${item.name}`,
+      outletId: session.user.outletId,
+      userId: session.user.id,
+    },
+  });
+  await recomputeOrderTotals(item.orderId);
+  await releaseTableIfOrderEmpty(item.orderId, item.order.tableId);
+
+  revalidatePath("/pos");
+  revalidatePath(`/pos/${item.orderId}`);
+  revalidatePath("/kot");
+  revalidatePath("/tables");
+  revalidatePath("/orders");
+}
+
 export async function voidOrderItem(orderItemId: string, reason: string) {
   const session = await requirePermission("void");
-  const item = await prisma.orderItem.findUnique({ where: { id: orderItemId } });
+  const item = await prisma.orderItem.findUnique({
+    where: { id: orderItemId },
+    include: { kotItems: { select: { id: true, kotId: true } } },
+  });
   if (!item) throw new Error("Item not found");
+
   await prisma.orderItem.update({
     where: { id: orderItemId },
     data: { voided: true, voidReason: reason || "Voided" },
@@ -380,6 +544,9 @@ export async function voidOrderItem(orderItemId: string, reason: string) {
     where: { orderItemId },
     data: { status: "VOIDED" },
   });
+
+  await refreshKotsAfterItemChange(item.kotItems.map((k) => k.kotId));
+
   await prisma.auditLog.create({
     data: {
       action: "VOID_ITEM",
@@ -394,6 +561,7 @@ export async function voidOrderItem(orderItemId: string, reason: string) {
   revalidatePath("/pos");
   revalidatePath(`/pos/${item.orderId}`);
   revalidatePath("/kot");
+  revalidatePath("/tables");
 }
 
 export async function sendKot(orderId: string) {
@@ -405,44 +573,54 @@ export async function sendKot(orderId: string) {
         where: { kotSent: false, voided: false },
         include: { menuItem: true },
       },
-      kots: true,
+      kots: { orderBy: { createdAt: "asc" } },
+      table: true,
     },
   });
   if (!order) throw new Error("Order not found");
   if (!order.items.length) throw new Error("No new items to send");
 
-  const byStation = new Map<string, typeof order.items>();
-  for (const item of order.items) {
-    const station = item.menuItem?.kitchenStation || "Kitchen";
-    const list = byStation.get(station) ?? [];
-    list.push(item);
-    byStation.set(station, list);
-  }
+  // One KOT per table/order — append new items to the open ticket (do not split by station)
+  const openKot = order.kots.find((k) =>
+    ["PENDING", "PREPARING", "READY", "DELAYED"].includes(k.status)
+  );
 
-  let kotNumber = order.kots.length + 1;
-  for (const [station, items] of byStation) {
+  const itemCreates = order.items.map((i) => ({
+    quantity: i.quantity,
+    name: [i.name, i.variantName, i.addonNames].filter(Boolean).join(" · "),
+    notes: i.notes,
+    orderItemId: i.id,
+  }));
+
+  if (openKot) {
+    await prisma.kotItem.createMany({
+      data: itemCreates.map((row) => ({ ...row, kotId: openKot.id })),
+    });
+    await prisma.kot.update({
+      where: { id: openKot.id },
+      data: {
+        status: openKot.status === "READY" ? "PENDING" : openKot.status,
+        updatedAt: new Date(),
+        station: "Kitchen",
+      },
+    });
+  } else {
+    const kotNumber = order.kots.length > 0 ? Math.max(...order.kots.map((k) => k.kotNumber)) + 1 : 1;
     await prisma.kot.create({
       data: {
         kotNumber,
-        station,
+        station: "Kitchen",
         orderId: order.id,
         createdById: session.user.id,
-        items: {
-          create: items.map((i) => ({
-            quantity: i.quantity,
-            name: [i.name, i.variantName, i.addonNames].filter(Boolean).join(" · "),
-            notes: i.notes,
-            orderItemId: i.id,
-          })),
-        },
+        items: { create: itemCreates },
       },
     });
-    await prisma.orderItem.updateMany({
-      where: { id: { in: items.map((i) => i.id) } },
-      data: { kotSent: true },
-    });
-    kotNumber += 1;
   }
+
+  await prisma.orderItem.updateMany({
+    where: { id: { in: order.items.map((i) => i.id) } },
+    data: { kotSent: true },
+  });
 
   // KOT sent → Running (green)
   if (order.tableId) {
