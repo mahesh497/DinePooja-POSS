@@ -947,6 +947,55 @@ export async function deleteOrderPermanently(orderId: string) {
   revalidatePath("/alerts");
 }
 
+/** Permanently delete several orders in one go (order history select-all). */
+export async function deleteOrdersPermanently(orderIds: string[]) {
+  const session = await requirePermission("void");
+  const unique = [...new Set(orderIds.map((id) => id.trim()).filter(Boolean))].slice(0, 200);
+  if (!unique.length) throw new Error("No orders selected");
+
+  const orders = await prisma.order.findMany({
+    where: { id: { in: unique }, outletId: session.user.outletId },
+    select: { id: true, orderNumber: true, tableId: true },
+  });
+  if (!orders.length) throw new Error("No matching orders");
+
+  const ids = orders.map((o) => o.id);
+  const tableIds = [...new Set(orders.map((o) => o.tableId).filter((id): id is string => !!id))];
+
+  await prisma.order.deleteMany({ where: { id: { in: ids } } });
+  await prisma.auditLog.deleteMany({
+    where: { outletId: session.user.outletId, entity: "Order", entityId: { in: ids } },
+  });
+  await prisma.auditLog.create({
+    data: {
+      action: "ORDER_DELETE_BULK",
+      entity: "Order",
+      entityId: ids[0],
+      details: `Deleted ${orders.length} order(s): ${orders.map((o) => o.orderNumber).join(", ")}`,
+      outletId: session.user.outletId,
+      userId: session.user.id,
+    },
+  });
+
+  for (const tableId of tableIds) {
+    const stillOpen = await prisma.order.findFirst({
+      where: { tableId, status: { in: ["OPEN", "HOLD"] } },
+      select: { id: true },
+    });
+    if (!stillOpen) await releaseTable(tableId);
+  }
+
+  revalidatePath("/orders");
+  revalidatePath("/pos");
+  revalidatePath("/tables");
+  revalidatePath("/reports");
+  revalidatePath("/bill");
+  revalidatePath("/kot");
+  revalidatePath("/delivery");
+  revalidatePath("/cash");
+  revalidatePath("/alerts");
+}
+
 export async function mergeTables(sourceTableId: string, targetTableId: string) {
   await requirePermission("tables");
   if (sourceTableId === targetTableId) throw new Error("Same table");

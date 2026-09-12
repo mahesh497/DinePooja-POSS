@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { assignDriver, cancelOrder, refundOrder } from "@/lib/actions/table-ops";
-import { deleteOrderPermanently } from "@/lib/actions/orders";
+import { deleteOrderPermanently, deleteOrdersPermanently } from "@/lib/actions/orders";
 import { formatINR } from "@/lib/tax";
 import {
   ONLINE_PLATFORMS,
@@ -78,6 +78,7 @@ export function OrdersHub({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState(billQuery ?? "");
+  const [selected, setSelected] = useState<string[]>([]);
 
   const filtered = useMemo(() => {
     let list = orders;
@@ -104,6 +105,11 @@ export function OrdersHub({
     }
     return list;
   }, [orders, tab, platform, search]);
+
+  const visibleIds = useMemo(() => filtered.map((o) => o.id), [filtered]);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
+  const selectedCount = selected.filter((id) => visibleIds.includes(id)).length;
 
   const counts = useMemo(
     () => ({
@@ -152,7 +158,10 @@ export function OrdersHub({
           <button
             key={t.key}
             type="button"
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setTab(t.key);
+              setSelected([]);
+            }}
             className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
               tab === t.key ? "bg-[var(--ink)] text-white" : "bg-white border border-[var(--line)]"
             }`}
@@ -190,6 +199,39 @@ export function OrdersHub({
         </div>
       ) : null}
 
+      {canDelete && filtered.length ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--line)] bg-white px-3 py-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={() => setSelected(allVisibleSelected ? [] : visibleIds)}
+            />
+            Select all ({filtered.length})
+          </label>
+          <button
+            type="button"
+            disabled={pending || selectedCount === 0}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+            onClick={() => {
+              const ids = selected.filter((id) => visibleIds.includes(id));
+              if (!ids.length) return;
+              const ok = window.confirm(
+                `Delete ${ids.length} selected order(s) permanently?\n\nThis cannot be undone.`
+              );
+              if (!ok) return;
+              run(async () => {
+                await deleteOrdersPermanently(ids);
+                setSelected([]);
+                setMessage(`Deleted ${ids.length} order(s)`);
+              });
+            }}
+          >
+            Delete selected{selectedCount ? ` (${selectedCount})` : ""}
+          </button>
+        </div>
+      ) : null}
+
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       {message ? <p className="text-sm text-[var(--ok)]">{message}</p> : null}
 
@@ -205,13 +247,27 @@ export function OrdersHub({
               className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-4"
             >
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="flex items-start gap-2">
+                  {canDelete ? (
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={selected.includes(order.id)}
+                      onChange={() =>
+                        setSelected((cur) =>
+                          cur.includes(order.id) ? cur.filter((id) => id !== order.id) : [...cur, order.id]
+                        )
+                      }
+                    />
+                  ) : null}
+                  <div>
                   <p className="font-semibold">{order.orderNumber}</p>
                   <p className="text-sm text-[var(--muted)]">
                     {order.tableName
                       ? `Table ${order.tableName}`
                       : order.customerName || orderTypeLabel(order.type)}
                   </p>
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${statusColor(order.status)}`}>
